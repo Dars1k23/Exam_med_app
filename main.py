@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 import pandas as pd
 import os
+from datetime import datetime
 
 EXCEL_FILE = "questions.xlsx"
 RESULTS_FILE = "results.xlsx"
@@ -137,18 +138,37 @@ class ExamApp:
                 else:
                     pd.DataFrame([{'Сообщение': 'Все ответы правильные!'}]).to_excel(writer, sheet_name='✅ Идеально!', index=False)
             
-            errors_count = len([e for e in self.wrong_questions if e['Статус'] == 'Ошибка'])
-            skips_count = len([e for e in self.wrong_questions if e['Статус'] == 'Пропуск'])
             print(f"✅ ПОЛНЫЙ отчет: {detail_file}")
-            print(f"   📈 Правильных: {self.score}/{self.total_questions}")
-            print(f"   ❌ Ошибок: {errors_count}")
-            print(f"   ⚪ Пропусков: {skips_count}")
             
         except Exception as e:
             print(f"❌ Ошибка сохранения: {e}")
 
-    def stop_timer(self):
-        pass  # ✅ Таймер удалён
+    def save_results_to_general_sheet(self):
+        """💾 КРАТКИЙ отчет в общую ведомость results.xlsx"""
+        try:
+            percent = (self.score / self.total_questions) * 100 if self.total_questions > 0 else 0
+            timestamp = datetime.now().strftime('%d.%m.%Y %H:%M:%S')
+            
+            general_data = [{
+                'Имя': self.user_name,
+                'Категория': self.category,
+                'Вопросов': self.total_questions,
+                'Правильных': self.score,
+                'Процент': f"{percent:.1f}%",
+                'Дата и время': timestamp
+            }]
+            
+            if os.path.exists(RESULTS_FILE):
+                existing_df = pd.read_excel(RESULTS_FILE, engine='openpyxl')
+                new_df = pd.concat([existing_df, pd.DataFrame(general_data)], ignore_index=True)
+            else:
+                new_df = pd.DataFrame(general_data)
+            
+            new_df.to_excel(RESULTS_FILE, index=False, engine='openpyxl')
+            print(f"✅ Сохранено в {RESULTS_FILE}")
+            
+        except Exception as e:
+            print(f"❌ Ошибка сохранения в общую ведомость: {e}")
 
     def show_start_screen(self):
         for widget in self.root.winfo_children():
@@ -217,25 +237,20 @@ class ExamApp:
         tk.Label(card, text="F11 - полноэкранный | ESC - выход | Колесико мыши - скролл", font=("Arial", 10), bg="#2d2d44", fg="#888").grid(row=5, column=0, pady=10)
 
     def start_test(self):
-        self.user_name = self.name_entry.get().strip()
-        if not self.user_name:
-            messagebox.showerror("Ошибка", "Введите имя!")
-            return
+        self.user_name = self.name_entry.get().strip() or "Аноним"
         self.category = self.category_var.get()
+        
         if not self.category:
-            messagebox.showerror("Ошибка", "Выберите категорию!")
+            messagebox.showwarning("Предупреждение", "Выберите категорию!")
             return
 
-        self.questions = self.df[self.df['category'] == self.category]
-        if len(self.questions) == 0:
-            self.questions = self.df
-
+        self.questions = self.df[self.df['category'] == self.category].reset_index(drop=True)
         self.current_question = 0
         self.score = 0
         self.total_questions = len(self.questions)
         self.user_answers = {}
         self.wrong_questions = []
-        print(f"🚀 Тест: {self.user_name} | {self.category} | {self.total_questions} вопросов")
+        
         self.show_test_screen()
 
     def show_test_screen(self):
@@ -253,7 +268,7 @@ class ExamApp:
             self.show_results()
             return
 
-        # ✅ УБРАН таймер — чище top_panel
+        # Header
         top_panel = tk.Frame(main_frame, bg="#1a1a2e", height=70)
         top_panel.pack(fill="x", pady=(0, 20))
         top_panel.pack_propagate(False)
@@ -268,6 +283,7 @@ class ExamApp:
         
         tk.Label(top_panel, text=f"{self.current_question + 1}/{self.total_questions}", font=("Arial", 14, "bold"), bg="#1a1a2e", fg="#667eea").pack(side="right", padx=10, pady=15)
 
+        # Question card
         question_card = tk.Frame(main_frame, bg="#2d2d44", bd=2, relief="ridge")
         question_card.pack(fill="both", expand=True, padx=50, pady=10)
         question_card.grid_rowconfigure(1, weight=1)
@@ -279,6 +295,7 @@ class ExamApp:
         question_label = tk.Label(question_card, text=question_data['Вопрос'], font=("Arial", 22, "bold"), bg="#2d2d44", fg="#ffffff", wraplength=800, justify="center")
         question_label.grid(row=1, column=0, padx=40, pady=20, sticky="nsew")
 
+        # Options
         options_frame = tk.Frame(question_card, bg="#2d2d44")
         options_frame.grid(row=2, column=0, pady=20, padx=40, sticky="nsew")
 
@@ -295,6 +312,7 @@ class ExamApp:
                                 selectcolor="#667eea", anchor="w", pady=12, padx=20)
             rb.pack(fill="x")
 
+        # Navigation buttons
         def on_enter(e): e.widget.config(bg="#57606f")
         def on_leave(e): e.widget.config(bg="#57606f")
         def btn_enter(e): e.widget.config(bg="#00b894")
@@ -311,12 +329,20 @@ class ExamApp:
             prev_btn.bind("<Enter>", on_enter)
             prev_btn.bind("<Leave>", on_leave)
 
-        next_btn = tk.Button(btn_frame, text="Следующий ▶", font=("Arial", 16, "bold"),
-                             bg="#00d4aa", fg="black", width=16, height=2,
-                             command=self.next_question)
-        next_btn.pack(side="right")
-        next_btn.bind("<Enter>", btn_enter)
-        next_btn.bind("<Leave>", btn_leave)
+        finish_btn = tk.Button(btn_frame, text="✅ ЗАВЕРШИТЬ ТЕСТ", font=("Arial", 16, "bold"),
+                              bg="#00d4aa", fg="black", width=20, height=2,
+                              command=self.finish_test)
+        finish_btn.pack(side="right", padx=10)
+        finish_btn.bind("<Enter>", btn_enter)
+        finish_btn.bind("<Leave>", btn_leave)
+
+        if self.current_question < self.total_questions - 1:
+            next_btn = tk.Button(btn_frame, text="Следующий ▶", font=("Arial", 16, "bold"),
+                                bg="#00d4aa", fg="black", width=16, height=2,
+                                command=self.next_question)
+            next_btn.pack(side="right")
+            next_btn.bind("<Enter>", btn_enter)
+            next_btn.bind("<Leave>", btn_leave)
 
     def next_question(self):
         if not self.answer_var.get():
@@ -324,12 +350,6 @@ class ExamApp:
             return
 
         self.user_answers[self.current_question] = self.answer_var.get()
-        self.update_score()
-        
-        selected_letter = self.answer_var.get()[-1]
-        correct_letter = self.get_correct_letter(self.current_question)
-        print(f"DEBUG: {selected_letter} | Правильно: {correct_letter} | Ошибок+пропусков: {len(self.wrong_questions)}")
-
         self.current_question += 1
         self.show_test_screen()
 
@@ -337,10 +357,14 @@ class ExamApp:
         self.current_question -= 1
         self.show_test_screen()
 
-    def show_results(self):
+    def finish_test(self):
+        self.user_answers[self.current_question] = self.answer_var.get()
         self.update_score()
         self.save_result_to_excel()
-        
+        self.save_results_to_general_sheet()
+        self.show_results()
+
+    def show_results(self):
         for widget in self.root.winfo_children():
             widget.destroy()
 
@@ -358,7 +382,7 @@ class ExamApp:
 
         score_card = tk.Frame(main_frame, bg="#2d2d44", bd=2, relief="ridge")
         score_card.pack(expand=True, padx=50, pady=20)
-        score_card.grid_rowconfigure(5, weight=1)
+        score_card.grid_rowconfigure(2, weight=1)
         score_card.grid_columnconfigure(0, weight=1)
 
         tk.Label(score_card, text=self.user_name, font=("Arial", 24, "bold"), bg="#2d2d44", fg="#00d4aa").grid(row=0, column=0, pady=20)
@@ -370,43 +394,13 @@ class ExamApp:
         percent_label = tk.Label(score_card, text=f"{percent:.1f}%", font=("Arial", 72, "bold"), bg="#2d2d44", fg="#ffffff")
         percent_label.grid(row=3, column=0, pady=20)
 
-        stats_frame = tk.Frame(score_card, bg="#2d2d44")
-        stats_frame.grid(row=4, column=0, pady=10, padx=20, sticky="nsew")
-        
-        errors_count = len([e for e in self.wrong_questions if e['Статус'] == 'Ошибка'])
-        skips_count = len([e for e in self.wrong_questions if e['Статус'] == 'Пропуск'])
-        answered_count = len(self.user_answers)
-        
-        tk.Label(stats_frame, text=f"📊 {answered_count}/{self.total_questions} отвечено, {skips_count} пропущено", 
-                font=("Arial", 14), bg="#2d2d44", fg="#888").pack(anchor="w")
-        tk.Label(stats_frame, text=f"❌ Ошибок: {errors_count} | ⚪ Пропусков: {skips_count}", 
-                font=("Arial", 16, "bold"), bg="#2d2d44", fg="#e74c3c").pack(anchor="w")
-
-        errors_frame = tk.Frame(score_card, bg="#2d2d44")
-        errors_frame.grid(row=5, column=0, pady=10, padx=20, sticky="nsew")
-        
-        if self.wrong_questions:
-            for error in self.wrong_questions[:8]:
-                status = "🔴 Ошибка" if error['Статус'] == 'Ошибка' else "⚪ Пропуск"
-                error_text = f"{error['№']}. {error['Вопрос'][:55]}... [{error['Выбран']} → {error['Правильно']}]"
-                tk.Label(errors_frame, text=f"{status} {error_text}", 
-                        font=("Arial", 12), bg="#2d2d44", fg="#ff6b6b", 
-                        anchor="w", padx=10).pack(anchor="w")
-            
-            if len(self.wrong_questions) > 8:
-                tk.Label(errors_frame, text=f"... и еще {len(self.wrong_questions)-8} проблем", 
-                        font=("Arial", 12), bg="#2d2d44", fg="#888").pack(anchor="w")
-        else:
-            tk.Label(errors_frame, text="✅ ИДЕАЛЬНО! Все ответы правильные!", 
-                    font=("Arial", 18, "bold"), bg="#2d2d44", fg="#00d4aa").pack(pady=20)
-
         def on_enter(e): e.widget.config(bg="#5a67d8")
         def on_leave(e): e.widget.config(bg="#667eea")
         
         restart_btn = tk.Button(score_card, text="🔄 НОВЫЙ ТЕСТ", font=("Arial", 20, "bold"),
                                bg="#667eea", fg="black", width=18, height=2,
                                command=self.restart)
-        restart_btn.grid(row=6, column=0, pady=30)
+        restart_btn.grid(row=4, column=0, pady=30)
         restart_btn.bind("<Enter>", on_enter)
         restart_btn.bind("<Leave>", on_leave)
 

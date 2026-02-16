@@ -1,315 +1,597 @@
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import messagebox, ttk
+from fpdf import FPDF
 import pandas as pd
 import os
+from datetime import datetime
 
-EXCEL_FILE = "questions.xlsx"
-
+import config
 
 class ExamApp:
     def __init__(self):
+        """Инициализация приложения: создание окна и загрузка данных"""
         self.root = tk.Tk()
-        self.root.title("🎓 Экзаменатор")
+        self.root.title("🎓 MedExam v1.0")
         self.root.geometry("1000x800")
-        self.root.minsize(800, 600)
-        self.root.configure(bg="#1e1e2e")
+        self.root.configure(bg="#1e1e2e")  # Темная тема (VS Code style)
 
-        
+        # Растягиваем сетку окна, чтобы элементы центрировались
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
 
-      
-        self.root.bind('<F11>', self.toggle_fullscreen)
-        self.root.bind('<Escape>', self.exit_fullscreen)
-
-        self.df = self.load_questions()
-        self.questions = None
-        self.current_question = 0
-        self.score = 0
-        self.total_questions = 0
-        self.category = ""
-        self.user_name = ""
-        self.is_fullscreen = False
+        # Переменные состояния (хранят данные текущей сессии)
+        self.df = self.load_questions()  # Вся таблица из Excel
+        self.questions = None  # Вопросы выбранной категории
+        self.current_question = 0  # Индекс текущего вопроса
+        self.score = 0  # Счетчик правильных ответов
+        self.user_answers = {}  # Словарь ответов: {индекс: "ВариантA"}
+        self.nav_buttons = {}
+        self.answer_buttons = {}
+        self.question_text_widget = None
+        self.question_label_var = None  # Для текста "Вопрос X / Y"
+        self.visited_questions = (
+            set()
+        )  # Для отслеживания, какие вопросы уже открывали (для подсветки в навигашке)
 
         self.show_start_screen()
 
-    def toggle_fullscreen(self, event=None):
-        self.is_fullscreen = not self.is_fullscreen
-        self.root.attributes('-fullscreen', self.is_fullscreen)
+    # --- ЛОГИКА РАБОТЫ С ДАННЫМИ (BACKEND) ---
 
-    def exit_fullscreen(self, event=None):
-        self.is_fullscreen = False
-        self.root.attributes('-fullscreen', False)
+    
 
-    def load_questions(self):
-        if not os.path.exists(EXCEL_FILE):
-            self.create_sample_data()
+    def save_result_to_excel(self):
+        """Добавляет результат студента в общую ведомость (all_results.xlsx)"""
         try:
-            df = pd.read_excel(EXCEL_FILE, engine='openpyxl')
-            print(f"✓ Загружено {len(df)} вопросов")
-            return df
-        except:
-            return pd.DataFrame()
+            if self.questions is None:
+                return
+            filename = config.GENERAL_RESULTS_FILE
+            percent = (self.score / len(self.questions)) * 100
 
-    def create_sample_data(self):
-        data = {
-            'category': ['Математика', 'Математика', 'Математика', 'Информатика', 'Информатика', 'Информатика',
-                         'Программирование', 'Программирование', 'Программирование', 'Алгоритмы'],
-            'Вопрос': ['2 + 2 = ?', '5 × 3 = ?', '√16 = ?', 'Что такое CPU?', 'Сколько бит в байте?',
-                       'Основная память?', 'Что выведет print("Hello")?', 'Тип для целых чисел?',
-                       'Сколько элементов в [1,2,3]?', 'Сложность поиска в массиве?'],
-            'ВариантA': ['3', '10', '2', 'Монитор', '4', 'Диск', '1', 'float', '2', 'O(1)'],
-            'ВариантB': ['4', '15', '4', 'Процессор', '8', 'RAM', 'Hello', 'int', '3', 'O(n)'],
-            'ВариантC': ['5', '20', '8', 'Клавиатура', '16', 'CPU', 'None', 'str', '4', 'O(log n)'],
-            'ВариантD': ['6', '25', '16', 'Мышь', '32', 'Видеокарта', 'Error', 'list', '5', 'O(n²)'],
-            'Правильный': ['B', 'B', 'B', 'B', 'B', 'B', 'B', 'B', 'B', 'B']
-        }
-        df = pd.DataFrame(data)
-        df.to_excel(EXCEL_FILE, index=False, engine='openpyxl')
-        print("✓ Создан файл questions.xlsx")
+            # Данные для новой строки
+            new_data = pd.DataFrame(
+                [
+                    {
+                        "Дата": datetime.now().strftime("%d.%m.%Y %H:%M"),
+                        "ФИО": self.user_name,
+                        "Предмет": self.category,
+                        "Баллы": f"{self.score}/{len(self.questions)}",
+                        "Процент": f"{percent:.1f}%",
+                    }
+                ]
+            )
+
+            # Читаем старые, добавляем новые
+            existing_df = pd.read_excel(filename)
+            updated_df = pd.concat([existing_df, new_data], ignore_index=True)
+            updated_df.to_excel(filename, index=False)
+
+            print(f"✓ Результат {self.user_name} занесен в общую ведомость.")
+        except Exception as e:
+            messagebox.showerror(
+                "Ошибка записи",
+                f"Не удалось обновить Excel: {e}\nВозможно, файл открыт!",
+            )
+
+    # --- ИНТЕРФЕЙС (FRONTEND) ---
 
     def show_start_screen(self):
-        for widget in self.root.winfo_children():
-            widget.destroy()
+        """Экран приветствия и выбора категории"""
+        self.clear_screen()
 
-        self.root.configure(bg="#1e1e2e")
-        main_frame = tk.Frame(self.root, bg="#1e1e2e")
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
-        main_frame.grid_rowconfigure(2, weight=1)
-        main_frame.grid_columnconfigure(0, weight=1)
+        # Главный контейнер (Frame)
+        container = tk.Frame(
+            self.root, bg="#2d2d44", padx=30, pady=30, relief="ridge", bd=2
+        )
+        container.place(relx=0.5, rely=0.5, anchor="center")  # Центрируем
 
-      
-        header_frame = tk.Frame(main_frame, bg="#667eea", height=200)
-        header_frame.pack(fill="x", pady=(0, 20))
-        header_frame.pack_propagate(False)
+        tk.Label(
+            container,
+            text="Вход в систему",
+            font=("Arial", 20, "bold"),
+            bg="#2d2d44",
+            fg="#00d4aa",
+        ).pack(pady=10)
 
-        title = tk.Label(header_frame, text="🎯 ЭКЗАМЕНАТОР",
-                         font=("Arial", 36, "bold"), bg="#667eea", fg="white")
-        title.pack(expand=True)
+        # Поле ввода имени
+        tk.Label(container, text="Введите ФИО:", bg="#2d2d44", fg="white").pack()
+        self.name_entry = tk.Entry(container, font=("Arial", 14), width=30)
+        self.name_entry.pack(pady=10)
 
-      
-        card = tk.Frame(main_frame, bg="#2d2d44", bd=2, relief="ridge")
-        card.pack(fill="both", expand=True, padx=50)
-        card.grid_rowconfigure(3, weight=1)
-        card.grid_columnconfigure(0, weight=1)
+        # Список категорий из Excel
+        tk.Label(container, text="Выберите предмет:", bg="#2d2d44", fg="white").pack()
+        self.cat_var = tk.StringVar()
+        categories = sorted(self.df["category"].unique().tolist())
 
-        
-        tk.Label(card, text="👤 Имя студента:", font=("Arial", 18, "bold"),
-                 bg="#2d2d44", fg="#e0e0e0").grid(row=0, column=0, pady=(40, 15), sticky="w", padx=40)
+        self.cat_combo = ttk.Combobox(
+            container, textvariable=self.cat_var, values=categories, state="readonly"
+        )
+        self.cat_combo.pack(pady=10, fill="x")
+        # Кнопка старта
+        tk.Button(
+            container,
+            text="НАЧАТЬ",
+            bg="#667eea",
+            fg="white",
+            font=("Arial", 12, "bold"),
+            command=self.start_test,
+        ).pack(pady=20)
 
-        self.name_entry = tk.Entry(card, font=("Arial", 16), width=30, bg="#40405a",
-                                   fg="white", insertbackground="white", relief="flat")
-        self.name_entry.grid(row=1, column=0, pady=10, sticky="ew", padx=40)
-        self.name_entry.focus()
+    def update_nav_button(self, index, color):
+        """Меняет цвет конкретной кнопки без перерисовки окна"""
+        if index in self.nav_buttons:
+            self.nav_buttons[index].config(bg=color)
 
-      
-        tk.Label(card, text="📂 Выберите категорию:", font=("Arial", 18, "bold"),
-                 bg="#2d2d44", fg="#e0e0e0").grid(row=2, column=0, pady=(30, 15), sticky="w", padx=40)
-
-        cat_frame = tk.Frame(card, bg="#2d2d44")
-        cat_frame.grid(row=3, column=0, pady=10, sticky="nsew", padx=40)
-
-        self.category_var = tk.StringVar()
-        categories = sorted(self.df["category"].dropna().unique())
-        for i, cat in enumerate(categories):
-            rb = tk.Radiobutton(cat_frame, text=f"  {cat}", variable=self.category_var,
-                                value=cat, font=("Arial", 16),
-                                bg="#2d2d44", fg="#e0e0e0", selectcolor="#40405a",
-                                activebackground="#2d2d44", activeforeground="white",
-                                width=40, anchor="w", pady=8)
-            rb.grid(row=i, column=0, sticky="w")
-
-        
-        start_btn = tk.Button(card, text=" НАЧАТЬ ТЕСТ", font=("Arial", 18, "bold"),
-                              bg="#00d4aa", fg="black", width=20, height=2,
-                              relief="raised", bd=4, cursor="hand2",
-                              activebackground="#00b894",
-                              command=self.start_test)
-        start_btn.grid(row=4, column=0, pady=40, padx=40, sticky="n")
-
-        tk.Label(card, text="F11 - полноэкранный | ESC - выход",
-                 font=("Arial", 10), bg="#2d2d44", fg="#888").grid(row=5, column=0, pady=10)
-
-    def start_test(self):
-        self.user_name = self.name_entry.get().strip()
-        if not self.user_name:
-            messagebox.showerror("Ошибка", "Введите имя!")
+    def save_current_answer(self):
+        """Сохраняет ответ БЕЗ перерисовки всего экрана"""
+        if self.questions is None:
             return
+        ans = self.ans_var.get()
+        q_idx = self.current_question
+        q_data = self.questions.iloc[q_idx]
 
-        self.category = self.category_var.get()
-        if not self.category:
-            messagebox.showerror("Ошибка", "Выберите категорию!")
-            return
+        self.user_answers[q_idx] = {
+            "question": q_data["Вопрос"],
+            "chosen": ans,
+            "correct": q_data["Правильный"],
+            "text_chosen": q_data[f"Вариант{ans}"],
+            "text_correct": q_data[f"Вариант{q_data['Правильный']}"],
+        }
 
-        self.questions = self.df[self.df['category'] == self.category]
-        if len(self.questions) == 0:
-            self.questions = self.df
+        # Вместо show_test_screen() обновляем только навигационную кнопку
+        self.update_nav_button(q_idx, "#00d4aa")  # Красим в зеленый
 
-        self.current_question = 0
-        self.score = 0
-        self.total_questions = len(self.questions)
-        print(f"🚀 Тест: {self.user_name} | {self.category} | {self.total_questions} вопросов")
+    def jump_to_question(self, index):
+        self.current_question = index
         self.show_test_screen()
 
-    def show_test_screen(self):
-        for widget in self.root.winfo_children():
-            widget.destroy()
-
-        self.root.configure(bg="#1e1e2e")
-        main_frame = tk.Frame(self.root, bg="#1e1e2e")
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
-        main_frame.grid_rowconfigure(1, weight=1)
-        main_frame.grid_columnconfigure(0, weight=1)
-
-        if self.current_question >= self.total_questions:
-            self.show_results()
+    def next_question_nav(self):
+        """Логика кнопки 'Вперед'"""
+        if self.questions is None:
             return
-
-        
-        top_panel = tk.Frame(main_frame, bg="#1a1a2e", height=70)
-        top_panel.pack(fill="x", pady=(0, 20))
-        top_panel.pack_propagate(False)
-
-        tk.Label(top_panel, text=f"👤 {self.user_name}", font=("Arial", 14, "bold"),
-                 bg="#1a1a2e", fg="#00d4aa").pack(side="left", padx=30, pady=15)
-        tk.Label(top_panel, text=f"📚 {self.category}", font=("Arial", 14),
-                 bg="#1a1a2e", fg="#e0e0e0").pack(side="left", padx=20, pady=15)
-        tk.Label(top_panel, text=f"📖 {self.current_question + 1}/{self.total_questions}",
-                 font=("Arial", 14, "bold"), bg="#1a1a2e", fg="#667eea").pack(side="right", padx=30, pady=15)
-
-      
-        question_card = tk.Frame(main_frame, bg="#2d2d44", bd=2, relief="ridge")
-        question_card.pack(fill="both", expand=True, padx=50, pady=10)
-        question_card.grid_rowconfigure(1, weight=1)
-        question_card.grid_columnconfigure(0, weight=1)
-
-        question_data = self.questions.iloc[self.current_question]
-
-        tk.Label(question_card, text=f"Вопрос {self.current_question + 1}",
-                 font=("Arial", 18, "bold"), bg="#2d2d44", fg="#667eea").grid(row=0, column=0, pady=(30, 20),
-                                                                              sticky="n")
-
-        question_label = tk.Label(question_card, text=question_data['Вопрос'],
-                                  font=("Arial", 22, "bold"), bg="#2d2d44", fg="#ffffff",
-                                  wraplength=800, justify="center")
-        question_label.grid(row=1, column=0, padx=40, pady=20, sticky="nsew")
-
-        
-        options_frame = tk.Frame(question_card, bg="#2d2d44")
-        options_frame.grid(row=2, column=0, pady=20, padx=40, sticky="nsew")
-
-        self.answer_var = tk.StringVar()
-        options = ['ВариантA', 'ВариантB', 'ВариантC', 'ВариантD']
-        for i, opt in enumerate(options):
-            text = question_data[opt]
-            rb = tk.Radiobutton(options_frame, text=f"{chr(65 + i)}. {text}",
-                                variable=self.answer_var, value=opt,  # value = 'ВариантA', 'ВариантB' и т.д.
-                                font=("Arial", 16, "bold"), bg="#40405a", fg="#ffffff",
-                                selectcolor="#667eea", anchor="w", pady=12, padx=20)
-            rb.pack(fill="x")
-
-      
-        btn_frame = tk.Frame(main_frame, bg="#1e1e2e")
-        btn_frame.pack(fill="x", pady=20)
-
-        if self.current_question > 0:
-            prev_btn = tk.Button(btn_frame, text="◀ Назад", font=("Arial", 16, "bold"),
-                                 bg="#57606f", fg="black", width=14, height=2,
-                                 command=self.prev_question)
-            prev_btn.pack(side="left")
-
-        next_btn = tk.Button(btn_frame, text="Следующий ▶", font=("Arial", 16, "bold"),
-                             bg="#00d4aa", fg="black", width=16, height=2,
-                             command=self.next_question)
-        next_btn.pack(side="right")
-
-    def next_question(self):
-        if not self.answer_var.get():
-            messagebox.showwarning("Внимание", "Выберите ответ!")
-            return
-
-        selected_column = self.answer_var.get()  # 'ВариантB'
-        question_data = self.questions.iloc[self.current_question]
-
-
-        selected_letter = selected_column[-1]  # Берем последнюю букву: 'B'
-        correct_letter = question_data['Правильный']  # 'B'
-
-        print(f"DEBUG: Выбрано: {selected_column} → {selected_letter} | Правильно: {correct_letter}")
-
-        if selected_letter == correct_letter:
-            self.score += 1
-            print(f"✅ ПРАВИЛЬНО! Всего баллов: {self.score}")
+        self.visited_questions.add(
+            self.current_question
+        )  # Помечаем текущий как посещенный
+        if self.current_question < len(self.questions) - 1:
+            self.current_question += 1
+            self.show_test_screen()
         else:
-            print(f"❌ НЕПРАВИЛЬНО (правильный: {correct_letter})")
-
-        self.current_question += 1
-        self.show_test_screen()
+            # Если это был последний вопрос
+            self.confirm_finish()
 
     def prev_question(self):
-        self.current_question -= 1
+        if self.current_question > 0:
+            self.current_question -= 1
+            self.show_test_screen()
+
+    def confirm_finish(self):
+        if self.questions is None:
+            return
+        answered = len(self.user_answers)
+        total = len(self.questions)
+        if answered < total:
+            if not messagebox.askyesno(
+                "Внимание", f"Вы ответили только на {answered} из {total}. Закончить?"
+            ):
+                return
+
+        # Считаем итоговый score перед финишем
+        self.score = sum(
+            1 for a in self.user_answers.values() if a["chosen"] == a["correct"]
+        )
+        self.finish_test()
+
+    def create_nav_buttons(self):
+        """Создает кнопки навигации один раз"""
+        if self.questions is None:
+            return
+        for i in range(len(self.questions)):
+            btn = tk.Button(
+                self.nav_grid,
+                text=str(i + 1),
+                width=3,
+                font=("Arial", 7),
+                command=lambda x=i: self.jump_to_question(x),
+            )
+            btn.grid(row=i // 10, column=i % 10, padx=1, pady=1)
+            self.nav_buttons[i] = btn
+        self.refresh_nav_colors()
+
+    def update_question_data(self):
+        """Обновляет только содержимое виджетов"""
+        # Safety check: ensure all required objects are initialized
+        if (
+            self.questions is None
+            or self.question_label_var is None
+            or self.question_text_widget is None
+            or not self.answer_buttons
+            or not self.nav_buttons
+        ):
+            return
+
+        q_data = self.questions.iloc[self.current_question]
+
+        # Обновляем заголовок и текст вопроса
+        self.question_label_var.set(
+            f"ВОПРОС {self.current_question + 1} / {len(self.questions)}"
+        )
+
+        self.question_text_widget.configure(state="normal")
+        self.question_text_widget.delete("1.0", "end")
+        self.question_text_widget.insert("1.0", q_data["Вопрос"])
+        self.question_text_widget.tag_add("center", "1.0", "end-1c")
+        self.question_text_widget.configure(state="disabled")
+
+        # Обновляем варианты ответов
+        for letter in ["A", "B", "C", "D"]:
+            self.answer_buttons[letter].config(
+                text=f"{letter}) {q_data[f'Вариант{letter}']}"
+            )
+
+        # Сбрасываем или устанавливаем галку
+        if self.current_question in self.user_answers:
+            self.ans_var.set(self.user_answers[self.current_question]["chosen"])
+        else:
+            self.ans_var.set("")
+
+        # Обновляем кнопки навигации и управления
+        self.refresh_nav_colors()
+
+        # Настройка кнопки Вперед/Финиш
+        if self.current_question == len(self.questions) - 1:
+            self.btn_next.config(text="ФИНИШ >>", bg="#00d4aa")
+        else:
+            self.btn_next.config(text="Вперед >>", bg="#4e4e6a")
+
+    def refresh_nav_colors(self):
+        """Перекрашивает кнопки навигации"""
+        for i, btn in self.nav_buttons.items():
+            if i == self.current_question:
+                color = "#667eea"
+            elif i in self.user_answers:
+                color = "#00d4aa"
+            elif i in self.visited_questions:
+                color = "#f39c12"
+            else:
+                color = "#444444"
+            btn.config(bg=color, fg="white")
+
+    def show_test_screen(self):
+        # Если экран уже отрисован, просто обновляем контент и выходим
+        if hasattr(self, "test_ui_created") and self.test_ui_created:
+            self.update_question_data()
+            return
+
+        self.clear_screen()
+        self.test_ui_created = True
+        self.visited_questions.add(self.current_question)
+
+        # --- ЛЕВАЯ ПАНЕЛЬ (Навигация) ---
+        nav_frame = tk.Frame(self.root, bg="#2d2d44", width=250)
+        nav_frame.pack(side="left", fill="y", padx=5, pady=5)
+
+        tk.Label(
+            nav_frame,
+            text="НАВИГАЦИЯ",
+            font=("Arial", 12, "bold"),
+            bg="#2d2d44",
+            fg="white",
+        ).pack(pady=10)
+
+        self.nav_grid = tk.Frame(nav_frame, bg="#2d2d44")
+        self.nav_grid.pack(padx=10)
+        self.create_nav_buttons()
+
+        # --- ПРАВАЯ ЧАСТЬ (Контент) ---
+        right_area = tk.Frame(self.root, bg="#1e1e2e")
+        right_area.pack(side="right", fill="both", expand=True)
+
+        content_wrapper = tk.Frame(right_area, bg="#1e1e2e")
+        content_wrapper.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.85)
+
+        # Переменная для заголовка (Вопрос 1 / 10)
+        self.question_label_var = tk.StringVar()
+        tk.Label(
+            content_wrapper,
+            textvariable=self.question_label_var,
+            bg="#1e1e2e",
+            fg="#888",
+            font=("Arial", 10),
+        ).pack()
+
+        # Поле вопроса
+        text_frame = tk.Frame(content_wrapper, bg="#1e1e2e")
+        text_frame.pack(pady=10, fill="x")
+
+        self.question_text_widget = tk.Text(
+            text_frame,
+            font=("Arial", 16, "bold"),
+            bg="#1e1e2e",
+            fg="white",
+            relief="flat",
+            height=8,
+            padx=20,
+            wrap="word",
+            state="disabled",
+        )
+        self.question_text_widget.tag_configure("center", justify="center")
+        self.question_text_widget.pack(side="left", fill="x", expand=True)
+
+        # Варианты ответов
+        self.ans_var = tk.StringVar()
+        self.answer_buttons = {}
+        for letter in ["A", "B", "C", "D"]:
+            rb = tk.Radiobutton(
+                content_wrapper,
+                text="",
+                variable=self.ans_var,
+                value=letter,
+                indicatoron=False,
+                bg="#2d2d44",
+                fg="white",
+                selectcolor="#667eea",
+                font=("Arial", 12),
+                width=55,
+                anchor="w",
+                padx=20,
+                pady=10,
+                command=self.save_current_answer,
+                cursor="hand2",
+            )
+            rb.pack(pady=4)
+            rb.bind("<Enter>", lambda e, b=rb: b.config(bg="#3d3d5c"))
+            rb.bind("<Leave>", lambda e, b=rb: b.config(bg="#2d2d44"))
+            self.answer_buttons[letter] = rb
+
+        # Кнопки управления
+        controls = tk.Frame(content_wrapper, bg="#1e1e2e")
+        controls.pack(fill="x", pady=20)
+
+        self.btn_prev = tk.Button(
+            controls, text="<< Назад", command=self.prev_question, width=12
+        )
+        self.btn_prev.pack(side="left")
+
+        self.btn_next = tk.Button(
+            controls,
+            text="Вперед >>",
+            command=self.next_question_nav,
+            width=12,
+            font=("Arial", 11, "bold"),
+        )
+        self.btn_next.pack(side="right")
+
+        # Заполняем данными первый раз
+        self.update_question_data()
+
+    # --- СЛУЖЕБНЫЕ МЕТОДЫ ---
+
+    def start_test(self):
+        """Подготовка данных перед началом теста с проверкой ФИО"""
+        # Убираем лишние пробелы по краям
+        self.user_name = self.name_entry.get().strip()
+        category = self.cat_var.get()
+
+        # Проверка на пустое имя (или если ввели только пробелы)
+        if not self.user_name or self.user_name == "Студент":
+            messagebox.showwarning(
+                "Доступ запрещен",
+                "Пожалуйста, введите ваше полное ФИО для идентификации в отчете!",
+            )
+            return
+
+        # Проверка на выбор категории
+        if not category:
+            messagebox.showwarning("Внимание", "Выберите предмет экзамена!")
+            return
+
+        # Если проверки пройдены — сохраняем категорию и грузим вопросы
+        self.category = category
+        self.questions = self.df[self.df["category"] == category].reset_index(drop=True)
+
+        # Проверка, есть ли вопросы в этой категории вообще
+        if self.questions.empty:
+            messagebox.showerror(
+                "Ошибка базы", f"В категории '{category}' нет вопросов!"
+            )
+            return
+
         self.show_test_screen()
 
-    def show_results(self):
+    def generate_pdf_report(self):
+        """Генерация официального PDF-отчета (исправленная версия)"""
+        try:
+            # 1. Создаем объект PDF
+            pdf = FPDF()
+            pdf.add_page()
+
+            # 2. ПОДКЛЮЧАЕМ ШРИФТ ПРАВИЛЬНО
+            # Файл 'arial.ttf' ОБЯЗАТЕЛЬНО должен лежать в папке с beta.py
+            font_path = "ARIAL.TTF"
+
+            if os.path.exists(font_path):
+                # Регистрируем шрифт под именем 'MyArial'
+                pdf.add_font("MyArial", "", font_path)
+                pdf.set_font("MyArial", size=12)
+            else:
+                messagebox.showerror(
+                    "Ошибка", "Файл arial.ttf не найден в папке с программой!"
+                )
+                return
+
+            # 3. Заголовок (используем новые параметры вместо ln=True)
+            pdf.set_font("MyArial", size=16)
+            pdf.cell(
+                0,
+                10,
+                text="ОФИЦИАЛЬНЫЙ ОТЧЕТ ПО ЭКЗАМЕНУ",
+                align="C",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
+            pdf.ln(10)
+
+            # 4. Инфо о студенте
+            pdf.set_font("MyArial", size=12)
+            pdf.cell(
+                0, 10, text=f"Студент: {self.user_name}", new_x="LMARGIN", new_y="NEXT"
+            )
+            pdf.cell(
+                0,
+                10,
+                text=f"Направление: {self.category}",
+                new_x="LMARGIN",
+                new_y="NEXT",
+            )
+
+            if self.questions is not None:
+                percent = (self.score / len(self.questions)) * 100
+                pdf.cell(
+                    0,
+                    10,
+                    text=f"Результат: {percent:.1f}%",
+                    new_x="LMARGIN",
+                    new_y="NEXT",
+                )
+                pdf.ln(10)
+
+                # 5. Список вопросов
+                for i in range(len(self.questions)):
+                    data = self.user_answers.get(i)
+                    if not data:
+                        continue
+                    is_correct = data["chosen"] == data["correct"]
+                    status = "ВЕРНО" if is_correct else "ОШИБКА"
+
+                    # Пишем вопрос
+                    pdf.set_font("MyArial", size=10)
+                    text_q = f"Вопрос {i + 1}: {data['question']} — {status}"
+                    pdf.multi_cell(0, 8, text=text_q, new_x="LMARGIN", new_y="NEXT")
+
+                    # Пишем ответы
+                    pdf.set_font("MyArial", size=9)
+                    pdf.multi_cell(
+                        0,
+                        6,
+                        text=f"   Ваш ответ: {data['text_chosen']}",
+                        new_x="LMARGIN",
+                        new_y="NEXT",
+                    )
+                    if not is_correct:
+                        pdf.multi_cell(
+                            0,
+                            6,
+                            text=f"   Верный: {data['text_correct']}",
+                            new_x="LMARGIN",
+                            new_y="NEXT",
+                        )
+                    pdf.ln(2)
+
+            # Сохранение (добавляем время, чтобы не затирать старые)
+            timestamp = datetime.now().strftime("%H%M%S")
+            filename = f"{config.REPORTS_DIR}/Отчет_{self.user_name}_{timestamp}.pdf"
+            pdf.output(filename)
+            print(f"✓ PDF создан: {filename}")
+
+        except Exception as e:
+            print(f"❌ Ошибка генерации PDF: {e}")
+
+    def finish_test(self):
+        """Финал: Запись в ведомость, создание PDF и показ итогов"""
+        self.save_result_to_excel()  # Теперь пишет в общую таблицу
+        self.generate_pdf_report()  # DF
+        self.show_results_screen()
+
+    def show_results_screen(self):
+        """Финальный экран: диаграмма слева + список разбора справа"""
+        self.clear_screen()
+
+        if self.questions is None:
+            return
+        total = len(self.questions)
+        percent = (self.score / total) * 100
+
+        # --- ЛЕВАЯ ПАНЕЛЬ (Статистика) ---
+        left_panel = tk.Frame(self.root, bg="#1e1e2e", width=350)
+        left_panel.pack(side="left", fill="y", padx=20)
+
+        tk.Label(
+            left_panel,
+            text="ИТОГИ ТЕСТА",
+            font=("Arial", 22, "bold"),
+            bg="#1e1e2e",
+            fg="#00d4aa",
+        ).pack(pady=20)
+
+        tk.Label(
+            left_panel,
+            text=f"Баллы: {self.score} из {total}\n({percent:.1f}%)",
+            font=("Arial", 16),
+            bg="#1e1e2e",
+            fg="white",
+        ).pack(pady=20)
+
+        tk.Button(
+            left_panel,
+            text="В ГЛАВНОЕ МЕНЮ",
+            command=self.show_start_screen,
+            bg="#667eea",
+            fg="white",
+            font=("Arial", 10, "bold"),
+            padx=15,
+            pady=8,
+        ).pack(side="bottom", pady=40)
+
+        # --- ПРАВАЯ ПАНЕЛЬ (Список ответов) ---
+        right_panel = tk.Frame(self.root, bg="#2d2d44")
+        right_panel.pack(side="right", fill="both", expand=True, padx=10, pady=10)
+
+        tk.Label(
+            right_panel,
+            text="Разбор полетов:",
+            font=("Arial", 14, "bold"),
+            bg="#2d2d44",
+            fg="white",
+        ).pack(pady=5)
+
+        # Текстовое поле с прокруткой
+        txt_area = tk.Text(
+            right_panel, bg="#1e1e2e", fg="white", font=("Arial", 11), padx=10, pady=10
+        )
+        scrollbar = tk.Scrollbar(right_panel, command=txt_area.yview)
+        txt_area.configure(yscrollcommand=scrollbar.set)
+
+        scrollbar.pack(side="right", fill="y")
+        txt_area.pack(side="left", fill="both", expand=True)
+
+        # Генерируем текст разбора
+        for i in range(total):
+            data = self.user_answers.get(i)
+            if not data:
+                continue
+            is_correct = data["chosen"] == data["correct"]
+            mark = "✅" if is_correct else "❌"
+
+            txt_area.insert("end", f"{mark} Вопрос {i + 1}: {data['question']}\n")
+
+            if not is_correct:
+                txt_area.insert(
+                    "end", f"   Вы выбрали: {data['text_chosen']}\n", "wrong"
+                )
+                txt_area.insert(
+                    "end", f"   Правильно:  {data['text_correct']}\n", "right"
+                )
+
+            txt_area.insert("end", "-" * 50 + "\n")
+
+        # Настройка цветов текста
+        txt_area.tag_config("wrong", foreground="#ff5e57")
+        txt_area.tag_config("right", foreground="#00d4aa")
+        txt_area.configure(state="disabled")  # Чтобы нельзя было стереть результаты
+
+    def clear_screen(self):
+        """Очистка всех виджетов с экрана перед отрисовкой нового"""
         for widget in self.root.winfo_children():
             widget.destroy()
-
-        self.root.configure(bg="#1e1e2e")
-        main_frame = tk.Frame(self.root, bg="#1e1e2e")
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
-
-        percent = (self.score / self.total_questions) * 100
-
-        
-        header_frame = tk.Frame(main_frame, bg="#667eea", height=150)
-        header_frame.pack(fill="x", pady=(0, 30))
-        header_frame.pack_propagate(False)
-
-        tk.Label(header_frame, text="🏆 ВАШ РЕЗУЛЬТАТ", font=("Arial", 40, "bold"),
-                 bg="#667eea", fg="white").pack(expand=True)
-
-      
-        score_card = tk.Frame(main_frame, bg="#2d2d44", bd=2, relief="ridge")
-        score_card.pack(expand=True, padx=50, pady=20)
-        score_card.grid_rowconfigure(4, weight=1)
-        score_card.grid_columnconfigure(0, weight=1)
-
-        tk.Label(score_card, text=self.user_name, font=("Arial", 24, "bold"),
-                 bg="#2d2d44", fg="#00d4aa").grid(row=0, column=0, pady=20)
-        tk.Label(score_card, text=self.category, font=("Arial", 20),
-                 bg="#2d2d44", fg="#e0e0e0").grid(row=1, column=0, pady=10)
-
-        score_label = tk.Label(score_card, text=f"{self.score}/{self.total_questions}",
-                               font=("Arial", 72, "bold"), bg="#2d2d44", fg="#667eea")
-        score_label.grid(row=2, column=0, pady=20)
-
-        percent_label = tk.Label(score_card, text=f"{percent:.1f}%",
-                                 font=("Arial", 32, "bold"), bg="#2d2d44", fg="#ffffff")
-        percent_label.grid(row=3, column=0, pady=10)
-
-      
-        if percent >= 80:
-            grade = "🎉 ОТЛИЧНО! 5"
-            color = "#00d4aa"
-        elif percent >= 60:
-            grade = "👍 ХОРОШО! 4"
-            color = "#f39c12"
-        elif percent >= 40:
-            grade = "📚 УДОВЛ. 3"
-            color = "#f1c40f"
-        else:
-            grade = "🔄 ПОВТОРИТЬ! 2"
-            color = "#e74c3c"
-
-        tk.Label(score_card, text=grade, font=("Arial", 28, "bold"),
-                 bg=color, fg="white", width=20, height=2).grid(row=4, column=0, pady=30, sticky="n")
-
-        tk.Button(score_card, text="🔄 НОВЫЙ ТЕСТ", font=("Arial", 20, "bold"),
-                  bg="#667eea", fg="black", width=18, height=2,
-                  command=self.restart).grid(row=5, column=0, pady=30)
-
-    def restart(self):
-        self.show_start_screen()
 
     def run(self):
         self.root.mainloop()

@@ -2,18 +2,16 @@ import os
 import config
 import pandas as pd
 
-import logs
-
 class Seeder:
-    def __init__(self, log: logs.LOGS):
-        self.log = log
+    def __init__(self):
+        pass
 
     def create_sample_data(self, empty = True):
         """Создает пустой шаблон Excel, если его нет"""
 
-        os.makedirs(config.SECURE_FOLDER+config.REPORTS_DIR, exist_ok=True)
-        os.makedirs(os.path.dirname(config.SECURE_FOLDER+config.QUESTIONS_FILE), exist_ok=True)
-        os.makedirs(os.path.dirname(config.SECURE_FOLDER+config.GENERAL_RESULTS_FILE),exist_ok=True)
+        os.makedirs(config.REPORTS_DIR, exist_ok=True)
+        os.makedirs(os.path.dirname(config.QUESTIONS_FILE), exist_ok=True)
+        os.makedirs(os.path.dirname(config.GENERAL_RESULTS_FILE),exist_ok=True)
 
         if not empty: 
             data = {
@@ -32,12 +30,11 @@ class Seeder:
             data = {}
 
         
-        if not os.path.exists(config.SECURE_FOLDER+config.QUESTIONS_FILE):
-            pd.DataFrame(data).to_excel(config.SECURE_FOLDER+config.QUESTIONS_FILE, index=False)
+        if not os.path.exists(config.QUESTIONS_FILE):
+            pd.DataFrame(data).to_excel(config.QUESTIONS_FILE, index=False)
 
-        if not os.path.exists(config.SECURE_FOLDER+config.GENERAL_RESULTS_FILE):
-            pd.DataFrame({}).to_excel(config.SECURE_FOLDER+config.GENERAL_RESULTS_FILE, index = False)
+        if not os.path.exists(config.GENERAL_RESULTS_FILE):
+            pd.DataFrame({}).to_excel(config.GENERAL_RESULTS_FILE, index = False)
 
-        if not os.path.exists(config.SECURE_FOLDER+config.LOG_FILE):
-            open(config.SECURE_FOLDER+config.LOG_FILE, "w")
 
+seeder = Seeder()

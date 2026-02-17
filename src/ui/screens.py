@@ -4,10 +4,12 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 import datetime
 
-from src.config import EXAM_PASSWORDS
+from src.config import EXAM_PASSWORDS, REPORTS_DIR
 from src.core import get_categories, load_questions, save_result_to_excel
-from src.utils import ProctorThread, WebcamThread, generate_pdf
+from src.utils import ProctorThread, WebcamThread, generate_pdf, get_number_of_test
 from src.ui.widgets import ActionButton, SuccessButton, DangerButton,SkipButton, QuestionCard, AppTitle, SectionTitle, IconLabel
+
+import re
 
 # --- ЭКРАН 1: КАТЕГОРИИ ---
 class CategoryScreen(QWidget):
@@ -151,10 +153,15 @@ class NameScreen(QWidget):
         layout.addStretch()
 
     def _start(self):
-        if self.inp.text().strip():
+        if self._validate_fio(self.inp.text().strip()):
             self.start_test.emit(self.inp.text().strip())
         else:
             self.inp.setStyleSheet("border: 2px solid #FC8181;")
+
+    def _validate_fio(self, user_name):
+        pattern = r'^[А-ЯЁ][а-яё\-\']{1,}[а-яё]*\s+[А-ЯЁ][а-яё\-\']{1,}[а-яё]*(?:\s+[А-ЯЁ][а-яё\-\']{1,}[а-яё]*){0,2}$'
+
+        return bool(re.match(pattern, user_name))
 
 # --- ЭКРАН 4: ТЕСТ (Сложная верстка с панелью) ---
 class TestScreen(QWidget):
@@ -170,6 +177,7 @@ class TestScreen(QWidget):
         self.current_idx = 0
         self.widgets = [] # Инициализируем сразу! (Fix AttributeError)
         self.nav_buttons = []
+        
         
         # Основной Layout
         root = QHBoxLayout(self)
@@ -314,8 +322,10 @@ class TestScreen(QWidget):
         self.timer.timeout.connect(self._update_timer)
         self.timer.start(1000)
         
-        self.proc_thread = ProctorThread(student)
-        self.cam_thread = WebcamThread(student)
+
+        self.test_number = get_number_of_test(student_dir = REPORTS_DIR  / student)
+        self.proc_thread = ProctorThread(student, self.test_number)
+        self.cam_thread = WebcamThread(student, self.test_number)
         self.proc_thread.screenshot_taken.connect(lambda p: self.proc_lbl.setText(f"● {p.split('/')[-1]}"))
         self.proc_thread.start()
         self.cam_thread.start()
@@ -416,10 +426,11 @@ class TestScreen(QWidget):
             self.finished.emit({
                 "student": self.student, "category": self.category,
                 "questions": self.questions, "answers": self.answers,
-                "elapsed": (datetime.datetime.now() - self.start_time).seconds
+                "elapsed": (datetime.datetime.now() - self.start_time).seconds,
+                "test_number": self.test_number
             })
 
-    def _stop_threads(self): # ------------------------------------- очень много времени выполняется
+    def _stop_threads(self):
         if self.proc_thread.isRunning(): self.proc_thread.stop()
         if self.cam_thread.isRunning(): self.cam_thread.stop()
         
@@ -446,7 +457,7 @@ class ResultScreen(QWidget):
                 
         percent = int(score/total*100) if total else 0
         save_result_to_excel(data['student'], score, total, data['category'])
-        generate_pdf(data['student'], data['category'], data['questions'], data['answers'], score, total)
+        generate_pdf(data['student'], data["test_number"],data['category'], data['questions'], data['answers'], score, total)
                 
         container = QWidget()
         c_layout = QVBoxLayout(container)

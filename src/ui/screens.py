@@ -4,12 +4,16 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 import datetime
 
-from src.config import EXAM_PASSWORDS, REPORTS_DIR
+from src.config import EXAM_PASSWORDS, REPORTS_DIR, TIME_FOR_EXAM
 from src.core import get_categories, load_questions, save_result_to_excel
 from src.utils import ProctorThread, WebcamThread, generate_pdf, get_number_of_test
 from src.ui.widgets import ActionButton, SuccessButton, DangerButton,SkipButton, QuestionCard, AppTitle, SectionTitle, IconLabel
 
 import re
+
+import os
+import json
+from pathlib import Path
 
 # --- ЭКРАН 1: КАТЕГОРИИ ---
 class CategoryScreen(QWidget):
@@ -177,6 +181,7 @@ class TestScreen(QWidget):
         self.current_idx = 0
         self.widgets = [] # Инициализируем сразу! (Fix AttributeError)
         self.nav_buttons = []
+        self.data_for_tmp = { "start_exams": 0, "answers": {}}
         
         
         # Основной Layout
@@ -265,28 +270,28 @@ class TestScreen(QWidget):
         c_layout.addStretch()
         
         # Кнопки внизу
-        nav_btns = QHBoxLayout()
-        self.btn_back = ActionButton("← Назад")
-        self.btn_back.clicked.connect(self._back)
-        nav_btns.addWidget(self.btn_back)
+        # nav_btns = QHBoxLayout()
+        # self.btn_back = ActionButton("← Назад")
+        # self.btn_back.clicked.connect(self._back)
+        # nav_btns.addWidget(self.btn_back)
         
-        self.btn_skip = SkipButton("Пропустить")
-        self.btn_skip.setObjectName("nav_btn_skipped")
-        self.btn_skip.setMinimumHeight(40)
-        self.btn_skip.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_skip.clicked.connect(self._skip)
-        nav_btns.addWidget(self.btn_skip)
+        # self.btn_skip = SkipButton("Пропустить")
+        # self.btn_skip.setObjectName("nav_btn_skipped")
+        # self.btn_skip.setMinimumHeight(40)
+        # self.btn_skip.setCursor(Qt.CursorShape.PointingHandCursor)
+        # self.btn_skip.clicked.connect(self._skip)
+        # nav_btns.addWidget(self.btn_skip)
         
-        nav_btns.addStretch()
+        # nav_btns.addStretch()
         
-        self.btn_next = ActionButton("Вперёд →")
-        self.btn_next.clicked.connect(self._next)
-        nav_btns.addWidget(self.btn_next)
+        # self.btn_next = ActionButton("Вперёд →")
+        # self.btn_next.clicked.connect(self._next)
+        # nav_btns.addWidget(self.btn_next)
         
-        self.btn_finish = SuccessButton("✓ Завершить")
-        self.btn_finish.clicked.connect(self._finish_confirm)
-        nav_btns.addWidget(self.btn_finish)
-        self.btn_finish.hide()
+        # self.btn_finish = SuccessButton("✓ Завершить")
+        # self.btn_finish.clicked.connect(self._finish_confirm)
+        # nav_btns.addWidget(self.btn_finish)
+        # self.btn_finish.hide()
 
          # Кнопки внизу
         nav_btns = QHBoxLayout()
@@ -316,14 +321,32 @@ class TestScreen(QWidget):
         c_layout.addLayout(nav_btns)
         root.addWidget(center)
         
+        
+
         # Логика
-        self.start_time = datetime.datetime.now()
+
+        # Создание временного файла содержащего информацию о времени начала для прохождения закрытого теста
+        self.test_number = get_number_of_test(student_dir = REPORTS_DIR  / student)
+        
+        if os.path.exists(REPORTS_DIR  / student / Path(str(int(str(self.test_number)) - 1)) / "tmp.txt"):
+            self.test_number =  Path(str(int(str(self.test_number)) - 1))
+
+            self._read_tmp_file()
+            self.start_time = datetime.datetime.fromtimestamp(self.data_for_tmp["start_exams"])
+            self.answers = self.data_for_tmp["answers"]
+        else:
+            self.start_time = datetime.datetime.now()
+            self.data_for_tmp["start_exams"] = self.start_time.timestamp()
+
+            os.makedirs(REPORTS_DIR  / self.student / self.test_number, exist_ok=True)
+
+            self._update_tmp_file()
+
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._update_timer)
         self.timer.start(1000)
         
 
-        self.test_number = get_number_of_test(student_dir = REPORTS_DIR  / student)
         self.proc_thread = ProctorThread(student, self.test_number)
         self.cam_thread = WebcamThread(student, self.test_number)
         self.proc_thread.screenshot_taken.connect(lambda p: self.proc_lbl.setText(f"● {p.split('/')[-1]}"))
@@ -332,9 +355,25 @@ class TestScreen(QWidget):
         
         self._load_q(0)
 
+    def _update_tmp_file(self):
+        with open(REPORTS_DIR  / self.student / self.test_number / "tmp.txt", "w") as f:
+            f.write(json.dumps(self.data_for_tmp))
+            
+            f.close()
+    
+    def _read_tmp_file(self):
+        with open(REPORTS_DIR  / self.student / self.test_number / "tmp.txt", "r") as f:
+            self.data_for_tmp = json.loads(f.read())
+            self.data_for_tmp["answers"] = { int(k):self.data_for_tmp["answers"][k] for k in self.data_for_tmp["answers"]}
+            f.close()
+
     def _update_timer(self):
-        delta = datetime.datetime.now() - self.start_time
+        delta =self.start_time + datetime.timedelta(seconds=TIME_FOR_EXAM) -  datetime.datetime.now() 
         seconds = delta.seconds
+
+        if delta.total_seconds() < 0:
+            self._finish_confirm(False)
+
         m, s = divmod(seconds, 60)
         self.timer_lbl.setText(f"{m:02d}:{s:02d}")
 
@@ -369,6 +408,7 @@ class TestScreen(QWidget):
         if q['type'] == 'multiple':
             for k, v in q['options'].items():
                 cb = QCheckBox(f"{k.upper()})  {v}")
+                cb.stateChanged.connect(self._save_ans)
                 self.opt_layout.addWidget(cb)
                 self.widgets.append((k, cb))
                 if idx in self.answers and k in self.answers[idx].split(','):
@@ -377,6 +417,8 @@ class TestScreen(QWidget):
             self.bg = QButtonGroup(self) # Важно сохранить ссылку
             for k, v in q['options'].items():
                 rb = QRadioButton(f"{k.upper()})  {v}")
+                rb.toggled.connect(self._save_ans)
+
                 self.bg.addButton(rb)
                 self.opt_layout.addWidget(rb)
                 self.widgets.append((k, rb))
@@ -386,9 +428,10 @@ class TestScreen(QWidget):
         self._update_nav()
         
         # Кнопки
-        self.btn_back.setEnabled(idx > 0)
+        is_first = (idx == 0)
+        self.btn_back.setEnabled(not is_first)
         is_last = (idx == len(self.questions) - 1)
-        self.btn_next.setVisible(not is_last)
+        self.btn_next.setEnabled(not is_last)
         self.btn_finish.setVisible(True) # Всегда даем возможность завершить
 
     def _save_ans(self):
@@ -402,11 +445,15 @@ class TestScreen(QWidget):
             if selected: 
                 self.answers[self.current_idx] = ",".join(sorted(selected))
                 self.skipped.discard(self.current_idx)
+                self.data_for_tmp["answers"] = self.answers
+                self._update_tmp_file()
         else:
             for k, w in self.widgets:
                 if w.isChecked():
                     self.answers[self.current_idx] = k
                     self.skipped.discard(self.current_idx)
+                    self.data_for_tmp["answers"] = self.answers
+                    self._update_tmp_file()
                     break
 
     def _next(self): self._load_q(self.current_idx + 1)
@@ -415,12 +462,20 @@ class TestScreen(QWidget):
         self.skipped.add(self.current_idx)
         self._next()
 
-    def _finish_confirm(self):
+    def _finish_confirm(self, ask = True):
         self._save_ans()
-        reply = QMessageBox.question(self, "Завершение", 
-                                     f"Отвечено: {len(self.answers)}/{len(self.questions)}\nЗавершить тест?",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.Yes:
+        end = False
+        if ask:
+            reply = QMessageBox.question(self, "Завершение", 
+                                        f"Отвечено: {len(self.answers)}/{len(self.questions)}\nЗавершить тест?",
+                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.Yes:
+                end = True
+        else:
+            end = True
+        
+        if end:
+            os.remove(REPORTS_DIR  / self.student / self.test_number / "tmp.txt")
             self._stop_threads()
             self.timer.stop()
             self.finished.emit({

@@ -101,4 +101,4 @@ def save_result_to_excel(student, score, total, category):
         print(f"Error saving result: {e}")
 
 def _get_demo_data(n):
-    return [{"question": f"Демо вопрос {i} (ответ {str(i%4)})", "options": {"0": "Да", "1": "Нет", "2": str(i), "3": "-"}, "correct": str(i%4), "category": "Demo", "type": "single"} for i in range(n)]
+    return [{"question": f"Демо вопрос {i} (ответ a)", "options": {"a": "Да", "b": "Нет", "c": str(i), "d": "-"}, "correct": "a", "category": "Demo", "type": "single"} for i in range(n)]

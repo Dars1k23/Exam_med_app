@@ -9,6 +9,8 @@ EXAM_PASSWORDS = {
     "Все категории": "admin2025",
 }
 
+TIME_FOR_EXAM = 30*60
+
 # Пути
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"

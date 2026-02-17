@@ -268,30 +268,6 @@ class TestScreen(QWidget):
         
         c_layout.addWidget(self.q_card)
         c_layout.addStretch()
-        
-        # Кнопки внизу
-        # nav_btns = QHBoxLayout()
-        # self.btn_back = ActionButton("← Назад")
-        # self.btn_back.clicked.connect(self._back)
-        # nav_btns.addWidget(self.btn_back)
-        
-        # self.btn_skip = SkipButton("Пропустить")
-        # self.btn_skip.setObjectName("nav_btn_skipped")
-        # self.btn_skip.setMinimumHeight(40)
-        # self.btn_skip.setCursor(Qt.CursorShape.PointingHandCursor)
-        # self.btn_skip.clicked.connect(self._skip)
-        # nav_btns.addWidget(self.btn_skip)
-        
-        # nav_btns.addStretch()
-        
-        # self.btn_next = ActionButton("Вперёд →")
-        # self.btn_next.clicked.connect(self._next)
-        # nav_btns.addWidget(self.btn_next)
-        
-        # self.btn_finish = SuccessButton("✓ Завершить")
-        # self.btn_finish.clicked.connect(self._finish_confirm)
-        # nav_btns.addWidget(self.btn_finish)
-        # self.btn_finish.hide()
 
          # Кнопки внизу
         nav_btns = QHBoxLayout()
@@ -481,7 +457,7 @@ class TestScreen(QWidget):
             self.finished.emit({
                 "student": self.student, "category": self.category,
                 "questions": self.questions, "answers": self.answers,
-                "elapsed": (datetime.datetime.now() - self.start_time).seconds,
+                "elapsed": (datetime.datetime.now() - self.start_time).seconds if (datetime.datetime.now() - self.start_time).seconds < TIME_FOR_EXAM  else TIME_FOR_EXAM,
                 "test_number": self.test_number
             })
 
@@ -511,7 +487,7 @@ class ResultScreen(QWidget):
                 score += 1
                 
         percent = int(score/total*100) if total else 0
-        save_result_to_excel(data['student'], score, total, data['category'])
+        save_result_to_excel(data['student'], score, len(data['answers']), total, data['category'], data["elapsed"])
         generate_pdf(data['student'], data["test_number"],data['category'], data['questions'], data['answers'], score, total)
                 
         container = QWidget()

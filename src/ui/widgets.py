@@ -19,6 +19,12 @@ class DangerButton(QPushButton):
         self.setObjectName("danger_btn")
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
+class SkipButton(QPushButton):
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setObjectName("skip_btn") # nav_btn_skipped
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
 class QuestionCard(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)

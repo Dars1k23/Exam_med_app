@@ -7,7 +7,7 @@ import datetime
 from src.config import EXAM_PASSWORDS
 from src.core import get_categories, load_questions, save_result_to_excel
 from src.utils import ProctorThread, WebcamThread, generate_pdf
-from src.ui.widgets import ActionButton, SuccessButton, DangerButton, QuestionCard, AppTitle, SectionTitle, IconLabel
+from src.ui.widgets import ActionButton, SuccessButton, DangerButton,SkipButton, QuestionCard, AppTitle, SectionTitle, IconLabel
 
 # --- ЭКРАН 1: КАТЕГОРИИ ---
 class CategoryScreen(QWidget):
@@ -184,34 +184,51 @@ class TestScreen(QWidget):
         
         nav_layout.addWidget(SectionTitle("НАВИГАЦИЯ"))
         
-        self.proc_lbl = QLabel("● Прокторинг активен")
-        self.proc_lbl.setStyleSheet("color: #68D391; font-size: 11px;")
-        nav_layout.addWidget(self.proc_lbl)
-        nav_layout.addSpacing(10)
+        nav_layout.addSpacing(5)
         
-        # Сетка кнопок
-        grid = QGridLayout()
-        grid.setSpacing(4)
+
+        nav_container = QWidget()
+        nav_container.setObjectName("nav_grid_container")  
+        
+        # Настройка лейаута для отступов внутри контейнера
+        grid_layout = QGridLayout()
+        grid_layout.setSpacing(6)         # Чуть больше воздуха между кнопками
+        grid_layout.setContentsMargins(12, 12, 12, 12) # Отступы от краев рамки
+        
         total = len(self.questions)
         for i in range(total):
             btn = QPushButton(str(i + 1))
             btn.setObjectName("nav_btn_empty")
             btn.setFixedSize(28, 28)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.clicked.connect(lambda _, idx=i: self._load_q(idx))
-            grid.addWidget(btn, i // 7, i % 7) # 7 в ряд
+            grid_layout.addWidget(btn, i // 7, i % 7) # 7 в ряд
             self.nav_buttons.append(btn)
-        
-        nav_container = QWidget()
-        nav_container.setLayout(grid)
-        nav_layout.addWidget(nav_container)
-        
+            
+        nav_container.setLayout(grid_layout)
+        nav_layout.addWidget(nav_container)        
         nav_layout.addStretch()
         
         self.timer_lbl = QLabel("00:00")
-        self.timer_lbl.setStyleSheet("color: #F6E05E; font-size: 24px; font-weight: 700;")
+        self.timer_lbl.setObjectName("timer_label") # Подключаем стиль из QSS
         self.timer_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        nav_layout.addWidget(self.timer_lbl)
+        self.timer_lbl.setFixedSize(120, 50) # Фиксируем размер, чтобы не прыгал
         
+        # Можно добавить иконку часов, если хочется (через Unicode)
+        # self.timer_lbl.setText("⏱ 00:00") 
+        
+        # Центрируем виджет таймера в панели
+        timer_container = QWidget()
+        timer_container.setStyleSheet("background-color: #161B27;")
+        tl = QVBoxLayout(timer_container)
+        tl.addWidget(self.timer_lbl)
+        tl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        nav_layout.addWidget(timer_container)
+        
+        self.proc_lbl = QLabel("● Прокторинг активен")
+        self.proc_lbl.setStyleSheet("color: #68D391; font-size: 11px; background-color: #161B27;")
+        nav_layout.addWidget(self.proc_lbl)
+
         root.addWidget(nav_panel)
         
         # === ЦЕНТРАЛЬНАЯ ЧАСТЬ ===
@@ -233,6 +250,7 @@ class TestScreen(QWidget):
         self.opt_container = QWidget()
         self.opt_layout = QVBoxLayout(self.opt_container)
         self.opt_layout.setContentsMargins(0,10,0,0)
+        self.opt_container.setObjectName("question_layout")
         self.q_card.add_widget(self.opt_container)
         
         c_layout.addWidget(self.q_card)
@@ -244,7 +262,7 @@ class TestScreen(QWidget):
         self.btn_back.clicked.connect(self._back)
         nav_btns.addWidget(self.btn_back)
         
-        self.btn_skip = QPushButton("Пропустить")
+        self.btn_skip = SkipButton("Пропустить")
         self.btn_skip.setObjectName("nav_btn_skipped")
         self.btn_skip.setMinimumHeight(40)
         self.btn_skip.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -253,6 +271,31 @@ class TestScreen(QWidget):
         
         nav_btns.addStretch()
         
+        self.btn_next = ActionButton("Вперёд →")
+        self.btn_next.clicked.connect(self._next)
+        nav_btns.addWidget(self.btn_next)
+        
+        self.btn_finish = SuccessButton("✓ Завершить")
+        self.btn_finish.clicked.connect(self._finish_confirm)
+        nav_btns.addWidget(self.btn_finish)
+        self.btn_finish.hide()
+
+         # Кнопки внизу
+        nav_btns = QHBoxLayout()
+        nav_btns.setSpacing(15) # Расстояние между кнопками
+        
+        # Левая группа (Назад + Пропустить)
+        self.btn_back = ActionButton("← Назад")
+        self.btn_back.clicked.connect(self._back)
+        nav_btns.addWidget(self.btn_back)
+        
+        self.btn_skip = SkipButton("Пропустить")
+        self.btn_skip.clicked.connect(self._skip)
+        nav_btns.addWidget(self.btn_skip)
+        
+        nav_btns.addStretch() # Распорка посередине
+        
+        # Правая группа (Вперед / Завершить)
         self.btn_next = ActionButton("Вперёд →")
         self.btn_next.clicked.connect(self._next)
         nav_btns.addWidget(self.btn_next)
@@ -376,7 +419,7 @@ class TestScreen(QWidget):
                 "elapsed": (datetime.datetime.now() - self.start_time).seconds
             })
 
-    def _stop_threads(self):
+    def _stop_threads(self): # ------------------------------------- очень много времени выполняется
         if self.proc_thread.isRunning(): self.proc_thread.stop()
         if self.cam_thread.isRunning(): self.cam_thread.stop()
         
@@ -403,13 +446,8 @@ class ResultScreen(QWidget):
                 
         percent = int(score/total*100) if total else 0
         save_result_to_excel(data['student'], score, total, data['category'])
-        pdf_path = generate_pdf(data['student'], data['category'], data['questions'], data['answers'], score, total)
-        
-        # Scroll Area
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        
+        generate_pdf(data['student'], data['category'], data['questions'], data['answers'], score, total)
+                
         container = QWidget()
         c_layout = QVBoxLayout(container)
         c_layout.setContentsMargins(48, 32, 48, 32)
@@ -423,42 +461,15 @@ class ResultScreen(QWidget):
         top_card.add_widget(score_lbl)
         
         info_lbl = QLabel(f"ФИО: {data['student']}  ·  Результат: {score}/{total}")
-        info_lbl.setStyleSheet("color: #CBD5E0; font-size: 16px;")
+        info_lbl.setStyleSheet("color: #CBD5E0; font-size: 16px; max-height: 100px")
         info_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         top_card.add_widget(info_lbl)
-        
-        if pdf_path:
-            pdf_lbl = QLabel(f"📄 PDF сохранен: {pdf_path}")
-            pdf_lbl.setStyleSheet("color: #90CDF4; font-size: 12px;")
-            pdf_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            top_card.add_widget(pdf_lbl)
             
         c_layout.addWidget(top_card)
-        c_layout.addWidget(SectionTitle("РАЗБОР ОТВЕТОВ"))
         
-        # Список ответов
-        for i, q in enumerate(data['questions']):
-            u_raw = data['answers'].get(i, "")
-            is_correct = (set(u_raw.split(',')) == set(q['correct'].split(',')) and u_raw)
-            
-            card = QFrame()
-            card.setStyleSheet(f"""
-                background-color: {'#1A2E22' if is_correct else '#2D1515'};
-                border-left: 4px solid {'#38A169' if is_correct else '#E53E3E'};
-                border-radius: 8px; padding: 12px;
-            """)
-            card_l = QVBoxLayout(card)
-            
-            card_l.addWidget(QLabel(f"<b>Q{i+1}. {q['question']}</b>"))
-            card_l.addWidget(QLabel(f"Ваш ответ: {u_raw or 'Нет ответа'}"))
-            card_l.addWidget(QLabel(f"Правильно: {q['correct']}"))
-            
-            c_layout.addWidget(card)
-            
-        btn = DangerButton("🚪 Выйти")
+        btn = DangerButton("Выйти")
         btn.clicked.connect(self.logout.emit)
         c_layout.addWidget(btn)
         
         container.setLayout(c_layout)
-        scroll.setWidget(container)
-        layout.addWidget(scroll)
+        layout.addWidget(container)

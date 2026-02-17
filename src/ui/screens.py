@@ -1,0 +1,464 @@
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+                             QPushButton, QLineEdit, QComboBox, 
+                             QMessageBox, QScrollArea, QCheckBox, QRadioButton, QButtonGroup, QGridLayout, QFrame)
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+import datetime
+
+from src.config import EXAM_PASSWORDS
+from src.core import get_categories, load_questions, save_result_to_excel
+from src.utils import ProctorThread, WebcamThread, generate_pdf
+from src.ui.widgets import ActionButton, SuccessButton, DangerButton, QuestionCard, AppTitle, SectionTitle, IconLabel
+
+# --- ЭКРАН 1: КАТЕГОРИИ ---
+class CategoryScreen(QWidget):
+    next_step = pyqtSignal(str)
+
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setSpacing(20)
+        layout.setContentsMargins(80, 60, 80, 60)
+
+        layout.addWidget(IconLabel("⚕", "#3182CE"))
+        layout.addWidget(AppTitle("Medical Test System"))
+        
+        sub = QLabel("Шаг 1: Выберите направление экзамена")
+        sub.setStyleSheet("color: #718096; font-size: 16px;")
+        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(sub)
+
+        layout.addSpacing(20)
+
+        card = QuestionCard()
+        card.add_widget(SectionTitle("НАПРАВЛЕНИЕ ЭКЗАМЕНА"))
+        
+        self.combo = QComboBox()
+        self.combo.addItems(get_categories())
+        card.add_widget(self.combo)
+
+        # Находим индекс "Все категории" и выбираем его
+        index = self.combo.findText("Все категории")
+        if index >= 0:
+            self.combo.setCurrentIndex(index)
+        else:
+             # Если вдруг нет такого пункта, выбираем первый (0)
+            self.combo.setCurrentIndex(0)
+            
+        card.add_widget(self.combo)
+        
+        layout.addWidget(card)
+
+        btn = ActionButton("Далее →")
+        btn.clicked.connect(lambda: self.next_step.emit(self.combo.currentText()))
+        layout.addWidget(btn)
+        layout.addStretch()
+
+# --- ЭКРАН 2: ПАРОЛЬ ---
+class LoginScreen(QWidget):
+    success = pyqtSignal()
+    back = pyqtSignal()
+
+    def __init__(self, category):
+        super().__init__()
+        self.category = category
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setSpacing(20)
+        layout.setContentsMargins(80, 60, 80, 60)
+
+        layout.addWidget(IconLabel("🔒"))
+        layout.addWidget(AppTitle(f"Валидация: {category}"))
+        
+        sub = QLabel("Шаг 2: Введите пароль для доступа к экзамену")
+        sub.setStyleSheet("color: #718096; font-size: 16px;")
+        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(sub)
+
+        layout.addSpacing(20)
+
+        card = QuestionCard()
+        card.add_widget(SectionTitle("ПАРОЛЬ"))
+        self.pwd = QLineEdit()
+        self.pwd.setPlaceholderText("Введите пароль...")
+        self.pwd.setEchoMode(QLineEdit.EchoMode.Password)
+        self.pwd.returnPressed.connect(self._check)
+        card.add_widget(self.pwd)
+        layout.addWidget(card)
+
+        btn_row = QHBoxLayout()
+        b_btn = ActionButton("← Назад")
+        b_btn.clicked.connect(self.back.emit)
+        btn_row.addWidget(b_btn)
+        
+        v_btn = SuccessButton("Проверить пароль")
+        v_btn.clicked.connect(self._check)
+        btn_row.addWidget(v_btn)
+        
+        layout.addLayout(btn_row)
+        layout.addStretch()
+
+    def _check(self):
+        if self.pwd.text() == EXAM_PASSWORDS.get(self.category, ""):
+            self.success.emit()
+        else:
+            self.pwd.setStyleSheet("border: 2px solid #FC8181;")
+
+# --- ЭКРАН 3: ФИО ---
+class NameScreen(QWidget):
+    start_test = pyqtSignal(str)
+    back = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setSpacing(20)
+        layout.setContentsMargins(80, 60, 80, 60)
+
+        layout.addWidget(IconLabel("👤"))
+        layout.addWidget(AppTitle("Вход в систему"))
+        
+        sub = QLabel("Шаг 3: Введите ваше ФИО")
+        sub.setStyleSheet("color: #718096; font-size: 16px;")
+        sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(sub)
+
+        layout.addSpacing(20)
+
+        card = QuestionCard()
+        card.add_widget(SectionTitle("ФИО СТУДЕНТА"))
+        self.inp = QLineEdit()
+        self.inp.setPlaceholderText("Иванов Иван Иванович")
+        self.inp.returnPressed.connect(self._start)
+        card.add_widget(self.inp)
+        layout.addWidget(card)
+
+        btn_row = QHBoxLayout()
+        b_btn = ActionButton("← Назад")
+        b_btn.clicked.connect(self.back.emit)
+        btn_row.addWidget(b_btn)
+        
+        s_btn = SuccessButton("▶ Начать тест")
+        s_btn.clicked.connect(self._start)
+        btn_row.addWidget(s_btn)
+        layout.addLayout(btn_row)
+
+        warn = QLabel("🎥 Прокторинг: скриншоты каждые 30 сек, веб-камера каждую минуту")
+        warn.setStyleSheet("color: #718096; font-size: 12px; margin-top: 20px;")
+        warn.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(warn)
+        layout.addStretch()
+
+    def _start(self):
+        if self.inp.text().strip():
+            self.start_test.emit(self.inp.text().strip())
+        else:
+            self.inp.setStyleSheet("border: 2px solid #FC8181;")
+
+# --- ЭКРАН 4: ТЕСТ (Сложная верстка с панелью) ---
+class TestScreen(QWidget):
+    finished = pyqtSignal(dict)
+
+    def __init__(self, student, category):
+        super().__init__()
+        self.student = student
+        self.category = category
+        self.questions = load_questions(category)
+        self.answers = {}
+        self.skipped = set()
+        self.current_idx = 0
+        self.widgets = [] # Инициализируем сразу! (Fix AttributeError)
+        self.nav_buttons = []
+        
+        # Основной Layout
+        root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        
+        # === ЛЕВАЯ ПАНЕЛЬ (Навигация) ===
+        nav_panel = QWidget()
+        nav_panel.setObjectName("nav_panel")
+        nav_panel.setFixedWidth(260)
+        nav_layout = QVBoxLayout(nav_panel)
+        nav_layout.setContentsMargins(14, 16, 14, 16)
+        
+        nav_layout.addWidget(SectionTitle("НАВИГАЦИЯ"))
+        
+        self.proc_lbl = QLabel("● Прокторинг активен")
+        self.proc_lbl.setStyleSheet("color: #68D391; font-size: 11px;")
+        nav_layout.addWidget(self.proc_lbl)
+        nav_layout.addSpacing(10)
+        
+        # Сетка кнопок
+        grid = QGridLayout()
+        grid.setSpacing(4)
+        total = len(self.questions)
+        for i in range(total):
+            btn = QPushButton(str(i + 1))
+            btn.setObjectName("nav_btn_empty")
+            btn.setFixedSize(28, 28)
+            btn.clicked.connect(lambda _, idx=i: self._load_q(idx))
+            grid.addWidget(btn, i // 7, i % 7) # 7 в ряд
+            self.nav_buttons.append(btn)
+        
+        nav_container = QWidget()
+        nav_container.setLayout(grid)
+        nav_layout.addWidget(nav_container)
+        
+        nav_layout.addStretch()
+        
+        self.timer_lbl = QLabel("00:00")
+        self.timer_lbl.setStyleSheet("color: #F6E05E; font-size: 24px; font-weight: 700;")
+        self.timer_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        nav_layout.addWidget(self.timer_lbl)
+        
+        root.addWidget(nav_panel)
+        
+        # === ЦЕНТРАЛЬНАЯ ЧАСТЬ ===
+        center = QWidget()
+        c_layout = QVBoxLayout(center)
+        c_layout.setContentsMargins(32, 28, 32, 28)
+        
+        self.prog_lbl = QLabel()
+        self.prog_lbl.setStyleSheet("color: #A0AEC0; font-size: 13px;")
+        c_layout.addWidget(self.prog_lbl)
+        
+        # Карточка вопроса
+        self.q_card = QuestionCard()
+        self.q_lbl = QLabel()
+        self.q_lbl.setObjectName("question_label")
+        self.q_lbl.setWordWrap(True)
+        self.q_card.add_widget(self.q_lbl)
+        
+        self.opt_container = QWidget()
+        self.opt_layout = QVBoxLayout(self.opt_container)
+        self.opt_layout.setContentsMargins(0,10,0,0)
+        self.q_card.add_widget(self.opt_container)
+        
+        c_layout.addWidget(self.q_card)
+        c_layout.addStretch()
+        
+        # Кнопки внизу
+        nav_btns = QHBoxLayout()
+        self.btn_back = ActionButton("← Назад")
+        self.btn_back.clicked.connect(self._back)
+        nav_btns.addWidget(self.btn_back)
+        
+        self.btn_skip = QPushButton("Пропустить")
+        self.btn_skip.setObjectName("nav_btn_skipped")
+        self.btn_skip.setMinimumHeight(40)
+        self.btn_skip.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_skip.clicked.connect(self._skip)
+        nav_btns.addWidget(self.btn_skip)
+        
+        nav_btns.addStretch()
+        
+        self.btn_next = ActionButton("Вперёд →")
+        self.btn_next.clicked.connect(self._next)
+        nav_btns.addWidget(self.btn_next)
+        
+        self.btn_finish = SuccessButton("✓ Завершить")
+        self.btn_finish.clicked.connect(self._finish_confirm)
+        nav_btns.addWidget(self.btn_finish)
+        self.btn_finish.hide()
+        
+        c_layout.addLayout(nav_btns)
+        root.addWidget(center)
+        
+        # Логика
+        self.start_time = datetime.datetime.now()
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._update_timer)
+        self.timer.start(1000)
+        
+        self.proc_thread = ProctorThread(student)
+        self.cam_thread = WebcamThread(student)
+        self.proc_thread.screenshot_taken.connect(lambda p: self.proc_lbl.setText(f"● {p.split('/')[-1]}"))
+        self.proc_thread.start()
+        self.cam_thread.start()
+        
+        self._load_q(0)
+
+    def _update_timer(self):
+        delta = datetime.datetime.now() - self.start_time
+        seconds = delta.seconds
+        m, s = divmod(seconds, 60)
+        self.timer_lbl.setText(f"{m:02d}:{s:02d}")
+
+    def _update_nav(self):
+        for i, btn in enumerate(self.nav_buttons):
+            if i == self.current_idx:
+                btn.setObjectName("nav_btn_active")
+            elif i in self.answers:
+                btn.setObjectName("nav_btn_answered")
+            elif i in self.skipped:
+                btn.setObjectName("nav_btn_skipped")
+            else:
+                btn.setObjectName("nav_btn_empty")
+            btn.setStyle(btn.style()) # Обновляем стиль
+
+    def _load_q(self, idx):
+        self._save_ans()
+        if not (0 <= idx < len(self.questions)): return
+        
+        self.current_idx = idx
+        q = self.questions[idx]
+        
+        self.prog_lbl.setText(f"Вопрос {idx+1} из {len(self.questions)}")
+        self.q_lbl.setText(f"<b>{q['question']}</b>")
+        
+        # Очистка
+        while self.opt_layout.count():
+            item = self.opt_layout.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
+            
+        self.widgets = []
+        if q['type'] == 'multiple':
+            for k, v in q['options'].items():
+                cb = QCheckBox(f"{k.upper()})  {v}")
+                self.opt_layout.addWidget(cb)
+                self.widgets.append((k, cb))
+                if idx in self.answers and k in self.answers[idx].split(','):
+                    cb.setChecked(True)
+        else:
+            self.bg = QButtonGroup(self) # Важно сохранить ссылку
+            for k, v in q['options'].items():
+                rb = QRadioButton(f"{k.upper()})  {v}")
+                self.bg.addButton(rb)
+                self.opt_layout.addWidget(rb)
+                self.widgets.append((k, rb))
+                if idx in self.answers and self.answers[idx] == k:
+                    rb.setChecked(True)
+        
+        self._update_nav()
+        
+        # Кнопки
+        self.btn_back.setEnabled(idx > 0)
+        is_last = (idx == len(self.questions) - 1)
+        self.btn_next.setVisible(not is_last)
+        self.btn_finish.setVisible(True) # Всегда даем возможность завершить
+
+    def _save_ans(self):
+        # Проверка на существование self.widgets (для первого вызова)
+        if not hasattr(self, 'widgets') or not self.widgets:
+            return
+
+        q = self.questions[self.current_idx]
+        if q['type'] == 'multiple':
+            selected = [k for k, w in self.widgets if w.isChecked()]
+            if selected: 
+                self.answers[self.current_idx] = ",".join(sorted(selected))
+                self.skipped.discard(self.current_idx)
+        else:
+            for k, w in self.widgets:
+                if w.isChecked():
+                    self.answers[self.current_idx] = k
+                    self.skipped.discard(self.current_idx)
+                    break
+
+    def _next(self): self._load_q(self.current_idx + 1)
+    def _back(self): self._load_q(self.current_idx - 1)
+    def _skip(self): 
+        self.skipped.add(self.current_idx)
+        self._next()
+
+    def _finish_confirm(self):
+        self._save_ans()
+        reply = QMessageBox.question(self, "Завершение", 
+                                     f"Отвечено: {len(self.answers)}/{len(self.questions)}\nЗавершить тест?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            self._stop_threads()
+            self.timer.stop()
+            self.finished.emit({
+                "student": self.student, "category": self.category,
+                "questions": self.questions, "answers": self.answers,
+                "elapsed": (datetime.datetime.now() - self.start_time).seconds
+            })
+
+    def _stop_threads(self):
+        if self.proc_thread.isRunning(): self.proc_thread.stop()
+        if self.cam_thread.isRunning(): self.cam_thread.stop()
+        
+    def closeEvent(self, event):
+        self._stop_threads()
+        super().closeEvent(event)
+
+# --- ЭКРАН 5: РЕЗУЛЬТАТЫ ---
+class ResultScreen(QWidget):
+    logout = pyqtSignal()
+    
+    def __init__(self, data):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0,0,0,0)
+        
+        score = 0
+        total = len(data['questions'])
+        for i, q in enumerate(data['questions']):
+            u_raw = data['answers'].get(i, "")
+            c_raw = q['correct']
+            if set(u_raw.split(',')) == set(c_raw.split(',')) and u_raw:
+                score += 1
+                
+        percent = int(score/total*100) if total else 0
+        save_result_to_excel(data['student'], score, total, data['category'])
+        pdf_path = generate_pdf(data['student'], data['category'], data['questions'], data['answers'], score, total)
+        
+        # Scroll Area
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        
+        container = QWidget()
+        c_layout = QVBoxLayout(container)
+        c_layout.setContentsMargins(48, 32, 48, 32)
+        c_layout.setSpacing(20)
+        
+        # Карточка итога
+        top_card = QuestionCard()
+        score_lbl = QLabel(f"{percent}%")
+        score_lbl.setStyleSheet(f"font-size: 72px; font-weight: 800; color: {'#68D391' if percent >= 60 else '#FC8181'};")
+        score_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        top_card.add_widget(score_lbl)
+        
+        info_lbl = QLabel(f"ФИО: {data['student']}  ·  Результат: {score}/{total}")
+        info_lbl.setStyleSheet("color: #CBD5E0; font-size: 16px;")
+        info_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        top_card.add_widget(info_lbl)
+        
+        if pdf_path:
+            pdf_lbl = QLabel(f"📄 PDF сохранен: {pdf_path}")
+            pdf_lbl.setStyleSheet("color: #90CDF4; font-size: 12px;")
+            pdf_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            top_card.add_widget(pdf_lbl)
+            
+        c_layout.addWidget(top_card)
+        c_layout.addWidget(SectionTitle("РАЗБОР ОТВЕТОВ"))
+        
+        # Список ответов
+        for i, q in enumerate(data['questions']):
+            u_raw = data['answers'].get(i, "")
+            is_correct = (set(u_raw.split(',')) == set(q['correct'].split(',')) and u_raw)
+            
+            card = QFrame()
+            card.setStyleSheet(f"""
+                background-color: {'#1A2E22' if is_correct else '#2D1515'};
+                border-left: 4px solid {'#38A169' if is_correct else '#E53E3E'};
+                border-radius: 8px; padding: 12px;
+            """)
+            card_l = QVBoxLayout(card)
+            
+            card_l.addWidget(QLabel(f"<b>Q{i+1}. {q['question']}</b>"))
+            card_l.addWidget(QLabel(f"Ваш ответ: {u_raw or 'Нет ответа'}"))
+            card_l.addWidget(QLabel(f"Правильно: {q['correct']}"))
+            
+            c_layout.addWidget(card)
+            
+        btn = DangerButton("🚪 Выйти")
+        btn.clicked.connect(self.logout.emit)
+        c_layout.addWidget(btn)
+        
+        container.setLayout(c_layout)
+        scroll.setWidget(container)
+        layout.addWidget(scroll)

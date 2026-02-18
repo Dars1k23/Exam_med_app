@@ -1,12 +1,12 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QLineEdit, QComboBox, 
-                             QMessageBox, QScrollArea, QCheckBox, QRadioButton, QButtonGroup, QGridLayout, QFrame)
+                             QMessageBox, QScrollArea, QCheckBox, QRadioButton, QButtonGroup, QGridLayout, QFrame, QApplication)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 import datetime
 
 from src.config import EXAM_PASSWORDS, REPORTS_DIR, TIME_FOR_EXAM
 from src.core import get_categories, load_questions, save_result_to_excel
-from src.utils import ProctorThread, WebcamThread, generate_pdf, get_number_of_test
+from src.utils import ProctorThread, ScanningThread,  WebcamThread, generate_pdf, get_number_of_test
 from src.ui.widgets import ActionButton, SuccessButton, DangerButton,SkipButton, QuestionCard, AppTitle, SectionTitle, IconLabel
 
 import re
@@ -18,6 +18,7 @@ from pathlib import Path
 # --- ЭКРАН 1: КАТЕГОРИИ ---
 class CategoryScreen(QWidget):
     next_step = pyqtSignal(str)
+    exit_app = pyqtSignal() 
 
     def __init__(self):
         super().__init__()
@@ -58,6 +59,13 @@ class CategoryScreen(QWidget):
         btn = ActionButton("Далее →")
         btn.clicked.connect(lambda: self.next_step.emit(self.combo.currentText()))
         layout.addWidget(btn)
+
+
+        btn_exit = DangerButton("Выход")
+        btn_exit.clicked.connect(self.exit_app.emit)        
+        layout.addWidget(btn_exit)
+
+
         layout.addStretch()
 
 # --- ЭКРАН 2: ПАРОЛЬ ---
@@ -324,12 +332,20 @@ class TestScreen(QWidget):
         
 
         self.proc_thread = ProctorThread(student, self.test_number)
+        self.scanning_thread = ScanningThread()
+        self.scanning_thread.violation_detected.connect(lambda p: self._update_scanning_thread(p))
         self.cam_thread = WebcamThread(student, self.test_number)
-        self.proc_thread.screenshot_taken.connect(lambda p: self.proc_lbl.setText(f"● {p.split('/')[-1]}"))
+
         self.proc_thread.start()
+        self.scanning_thread.start()
         self.cam_thread.start()
         
         self._load_q(0)
+
+    def _update_scanning_thread(self, s: set):
+        with open(REPORTS_DIR  / self.student / self.test_number / "logs.txt", "a") as f:
+            data = { "time": datetime.datetime.now().timestamp(), "opens_apps": list(s)}
+            f.write(json.dumps(data)+ "\n")
 
     def _update_tmp_file(self):
         with open(REPORTS_DIR  / self.student / self.test_number / "tmp.txt", "w") as f:
@@ -463,6 +479,7 @@ class TestScreen(QWidget):
 
     def _stop_threads(self):
         if self.proc_thread.isRunning(): self.proc_thread.stop()
+        if self.scanning_thread.isRunning(): self.scanning_thread.stop()
         if self.cam_thread.isRunning(): self.cam_thread.stop()
         
     def closeEvent(self, event):
@@ -487,7 +504,11 @@ class ResultScreen(QWidget):
                 score += 1
                 
         percent = int(score/total*100) if total else 0
-        save_result_to_excel(data['student'], score, len(data['answers']), total, data['category'], data["elapsed"])
+        warning = False
+        if os.path.exists(REPORTS_DIR  / Path(data['student']) / Path( data["test_number"]) / "logs.txt"):
+            warning = True
+
+        save_result_to_excel(data['student'], score, len(data['answers']), total, data['category'], data["elapsed"], warning)
         generate_pdf(data['student'], data["test_number"],data['category'], data['questions'], data['answers'], score, total)
                 
         container = QWidget()
@@ -501,11 +522,20 @@ class ResultScreen(QWidget):
         score_lbl.setStyleSheet(f"font-size: 72px; font-weight: 800; color: {'#68D391' if percent >= 60 else '#FC8181'};")
         score_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         top_card.add_widget(score_lbl)
+
+        if warning:
+            filepath = REPORTS_DIR  / Path(data['student']) / Path( data["test_number"]) / "logs.txt"
+            warning_label = QLabel(f"ЗАМЕЧЕНО ПРИЛОЖЕНИЕ ИЗ ЧЕРНОГО СПИСКА\n {", ".join(list(self._get_logs(filepath)))}")
+            warning_label.setStyleSheet(f"font-size: 40px; font-weight: 800; color: '#FC8181';")
+            warning_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            top_card.add_widget(warning_label)
         
         info_lbl = QLabel(f"ФИО: {data['student']}  ·  Результат: {score}/{total}")
         info_lbl.setStyleSheet("color: #CBD5E0; font-size: 16px; max-height: 100px")
         info_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         top_card.add_widget(info_lbl)
+
+
             
         c_layout.addWidget(top_card)
         
@@ -515,3 +545,11 @@ class ResultScreen(QWidget):
         
         container.setLayout(c_layout)
         layout.addWidget(container)
+
+    def _get_logs(self, filepath):
+        s = set()
+        with open(filepath, "r") as f:
+            for line in f:
+                data = json.loads(line)
+                s = s | set(data["opens_apps"])
+        return s

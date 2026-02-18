@@ -81,17 +81,18 @@ def get_categories():
         pass
     return ["Все категории"]
 
-def save_result_to_excel(student, score, answered, total, category, time):
+def save_result_to_excel(student, score, answered, total, category, time, warning):
     try:
         new_row = {
-            "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "Student": student,
-            "Category": category,
-            "Score": score,
-            "Answered": answered,
-            "Total": total,
-            "Percent": round(score/total*100, 1) if total else 0,
-            "Lead Time": time
+            "Время написания": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "ФИО": student,
+            "Категория": category,
+            "Баллы": score,
+            "Количество отвечанный вопросов": answered,
+            "Количество всех вопросов": total,
+            "Процент выполнения": round(score/total*100, 1) if total else 0,
+            "Время написания, сек": time,
+            "Замечанно списывание (1 - да, 0 - нет)": warning
         }
         if RESULTS_FILE.exists():
             df = pd.read_excel(RESULTS_FILE)

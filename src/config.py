@@ -9,6 +9,20 @@ EXAM_PASSWORDS = {
     "Все категории": "admin2025",
 }
 
+BLACK_LIST = {
+    # Браузеры
+    "chrome", "firefox", "edge", "opera", "brave", "safari",
+    # Соцсети/Мессенджеры
+    "telegram", "discord", "whatsapp", "vk", "zoom", "teams",
+    "skype", "slack", "signal", "viber",
+    # Игры/Развлечения
+    "steam", "spotify", "vlc", "youtube",
+    # Редакторы/IDE
+    "notepad++", "code", "sublime", "atom", "gedit",
+    # Терминалы/Командная строка
+    "cmd", "powershell", "terminal", "conhost"
+}
+
 TIME_FOR_EXAM = 30*60
 
 # Пути

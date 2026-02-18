@@ -6,13 +6,13 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from fpdf import FPDF
 import os
 from pathlib import Path
-from src.config import REPORTS_DIR
+from src.config import REPORTS_DIR, BLACK_LIST
+from PIL import ImageGrab
+import psutil
 
 # --- ПРОКТОРИНГ ---
 
-class ProctorThread(QThread):
-    screenshot_taken = pyqtSignal(str)
-    
+class ProctorThread(QThread):    
     def __init__(self, student_name,test_number: Path, interval=30):
         super().__init__()
         self.screens_dir = REPORTS_DIR  / student_name/ test_number / "screens"
@@ -27,16 +27,89 @@ class ProctorThread(QThread):
                 ts = datetime.datetime.now().strftime("%H%M%S")
                 path = self.screens_dir / f"scr_{ts}.png"
                 pyautogui.screenshot().save(path)
-                self.screenshot_taken.emit(str(path))
+                # self._take_screenshot(path)
             except Exception:
                 pass
 
             self.sleep(self.interval)
+    
+    def _take_screenshot(filepath: Path): # ---------------- если на windows не рабоатет создание скриншота ----------------
+        """Делает скриншот экрана и сохраняет в файл."""
+        try:
+            # Делаем скриншот
+            screenshot = ImageGrab.grab()
+            
+            # Сохраняем
+            screenshot.save(filepath, "PNG")
+            
+        except Exception as e:
+            pass        
 
     def stop(self):
         self._running = False
         self.quit()
         # self.wait(2000) # Ждем не более 2 сек
+
+class ScanningThread(QThread):
+    violation_detected = pyqtSignal(set)
+
+    def __init__(self, interval = 1):
+        super().__init__()
+        self.interval = interval
+        self._running = True
+
+    def run(self):
+        while self._running:
+            if not self._running: break
+            try:
+                violation = self._check_blacklisted_apps()
+                if violation:
+                    self.violation_detected.emit(violation)
+            except Exception:
+                pass
+
+            self.sleep(self.interval)
+
+    def _check_blacklisted_apps(self):
+        """Проверяет процессы и окна. Возвращает название нарушения или пустую строку"""
+        try:
+            s = set()
+            # 1. Проверка процессов (psutil)
+            for proc in psutil.process_iter(['pid', 'name']):
+                try:
+                    proc_name = proc.info['name'].lower()
+                    if any(bl in proc_name for bl in BLACK_LIST):
+                        s.add(proc.info['name'])
+                        # return f"Запрещённый процесс: {proc.info['name']}"
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+            
+            # 2. Проверка окон (Windows: powershell WMI)
+            if os.name == "nt":  # Windows
+                try:
+                    result = subprocess.run([
+                        "powershell",
+                        "-Command",
+                        "Get-Process | Where-Object {$_.MainWindowTitle} | Select-Object -ExpandProperty MainWindowTitle"
+                    ], capture_output=True, text=True, timeout=3)
+                    
+                    window_titles = [title.strip().lower() for title in result.stdout.split('\n') if title.strip()]
+                    
+                    for title in window_titles:
+                        if any(bl in title for bl in BLACK_LIST):
+                            s.add(title)
+                            
+                except subprocess.TimeoutExpired:
+                    pass
+            
+        except Exception:
+            pass
+        return s
+
+    def stop(self):
+        self._running = False
+        self.quit()
+
 
 class WebcamThread(QThread):
     def __init__(self, student_name, test_number: Path, interval=30):

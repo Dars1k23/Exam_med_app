@@ -1,4 +1,5 @@
-from PyQt6.QtWidgets import QMainWindow, QStackedWidget
+from PyQt6.QtWidgets import QMainWindow, QStackedWidget, QApplication
+from PyQt6.QtCore import Qt
 from src.ui.styles import DARK_QSS
 from src.ui.screens import CategoryScreen, LoginScreen, NameScreen, TestScreen, ResultScreen
 
@@ -7,16 +8,43 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Medical Exam System")
         self.resize(1000, 700)
-        self.setStyleSheet(DARK_QSS)
         
+        self.showFullScreen()
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | 
+            Qt.WindowType.WindowStaysOnTopHint | 
+            Qt.WindowType.Tool 
+        )
+        self._can_close = False
+        
+        self.setStyleSheet(DARK_QSS)
+
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
-        
+
         self._show_category()
+
+    def closeEvent(self, event):
+        if not getattr(self, "_can_close", False):
+            event.ignore()
+        else:
+            super().closeEvent(event)
+
+    def _exit_app(self):
+        # разрешаем закрытие и вызываем стандартный quit
+        self._can_close = True
+        QApplication.instance().quit()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_Escape:
+            event.ignore() # Игнорируем Esc
+        else:
+            super().keyPressEvent(event)
 
     def _show_category(self):
         self.cat_scr = CategoryScreen()
         self.cat_scr.next_step.connect(self._show_login)
+        self.cat_scr.exit_app.connect(self._exit_app)
         self._set_screen(self.cat_scr)
 
     def _show_login(self, category):

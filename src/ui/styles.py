@@ -80,6 +80,7 @@ QPushButton#danger_btn {
     padding: 10px 24px;
     font-size: 14px;
     font-weight: 600;
+    min-height: 40px;
 }
 
 QPushButton#skip_btn {

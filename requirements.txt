@@ -1,6 +1,24 @@
-PyQt6
-pandas
-openpyxl
-fpdf2
-pyautogui
-opencv-python
+# requirements.txt для Medical Exam System
+# pip install -r requirements.txt
+
+# GUI Framework
+PyQt6==6.6.1
+
+# Excel/CSV обработка
+pandas==2.1.4
+openpyxl==3.1.2
+xlrd==2.0.1
+
+# PDF генерация
+fpdf2==2.8.0
+
+# Скриншоты и мониторинг
+pyautogui==0.9.54
+Pillow==10.1.0
+psutil==5.9.8
+
+# OpenCV для веб-камеры
+opencv-python==4.9.0.80
+
+# Системные утилиты
+pathlib  # стандартная библиотека Python 3.4+

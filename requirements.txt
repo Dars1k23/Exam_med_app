@@ -1,0 +1,6 @@
+PyQt6
+pandas
+openpyxl
+fpdf2
+pyautogui
+opencv-python

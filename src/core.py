@@ -1,85 +1,71 @@
 import pandas as pd
-from src.config import QUESTIONS_FILE, RESULTS_FILE, EXAM_PASSWORDS
+from src.config import QUESTIONS_FILE, RESULTS_FILE, CATEGORY_FILE
 from datetime import datetime
 
 def load_questions(category: str | None = None, n: int = 100):
     """
     Загружает вопросы, нормализует колонки и фильтрует по категории.
     """
-    # Демо данные, если нет файла или pandas
-    try:
-        if not QUESTIONS_FILE.exists():
-            return _get_demo_data(n)
-        
-        df = pd.read_excel(QUESTIONS_FILE)
-        
-        # Нормализация имен колонок (убираем пробелы, lower case)
-        df.columns = [str(c).strip().lower() for c in df.columns]
-        
-        # Маппинг для надежности (если в Excel написано "Option A" или "Вариант А")
-        col_map = {}
-        for col in df.columns:
-            if 'question' in col or 'вопрос' in col: col_map[col] = 'question'
-            elif 'option' in col and 'a' in col: col_map[col] = 'option_a'
-            elif 'option' in col and 'b' in col: col_map[col] = 'option_b'
-            elif 'option' in col and 'c' in col: col_map[col] = 'option_c'
-            elif 'option' in col and 'd' in col: col_map[col] = 'option_d'
-            elif 'correct' in col or 'ответ' in col: col_map[col] = 'correct'
-            elif 'cat' in col: col_map[col] = 'category'
-            elif 'type' in col: col_map[col] = 'type'
-            
-        df = df.rename(columns=col_map)
-        
-        # Фильтрация
-        if category and category != "Все категории" and "category" in df.columns:
-            df = df[df["category"].astype(str).str.strip() == category]
+    
+    if not QUESTIONS_FILE.exists():
+        raise "Нет файла с вопросами"
+    
+    if not CATEGORY_FILE.exists():
+        raise "Нет файла с категориями"
+    
+    questions_df = pd.read_excel(QUESTIONS_FILE)
+    questions_df = questions_df.astype(str)
 
-        if df.empty:
-            return _get_demo_data(n)
+    categories = get_categories()
+    code = -1
+    for key in categories:
+        if categories[key]["Описание"] == category:
+            code = categories[key]["Код"]
 
-        # Выборка
-        sample_size = min(n, len(df))
-        df = df.sample(sample_size).reset_index(drop=True)
+    questions_df = (questions_df[questions_df["Раздел"] == code])
 
-        questions = []
-        for _, row in df.iterrows():
-            # Очистка правильного ответа (удаляем пробелы: "a, b" -> "a,b")
-            raw_correct = str(row.get("correct", "a")).strip().lower()
-            correct = ",".join([x.strip() for x in raw_correct.split(",") if x.strip()])
-            
-            q_type = str(row.get("type", "single")).strip().lower()
-            
-            questions.append({
-                "question": str(row.get("question", "?")),
-                "options": {
-                    "a": str(row.get("option_a", "-")),
-                    "b": str(row.get("option_b", "-")),
-                    "c": str(row.get("option_c", "-")),
-                    "d": str(row.get("option_d", "-")),
-                },
-                "correct": correct,
-                "category": str(row.get("category", "General")),
-                "type": "multiple" if q_type == "multiple" else "single",
-            })
-        return questions
+    if (len(questions_df) == 0):
+        raise "Нет вопросов в категории"
+    
+    n = min(n, len(questions_df))
 
-    except Exception as e:
-        print(f"Error loading questions: {e}")
-        return _get_demo_data(n)
+    questions_df = questions_df.sample(n=n)
+    
+    questions = []
+    for _, row in questions_df.iterrows():
+        question = str(row.get("Вопрос"))
+
+        options = {}
+        for i in range(5):
+            if str(row.get(f"Ответ{i+1}")) != "nan":
+                options[str(i+1)] = str(row.get(f"Ответ{i+1}"))
+
+        correct = str(row.get("Верный_ответ"))
+
+
+        questions.append({"question": question, "options": options, "correct": correct, "category": "Demo", "type": "single"})
+
+
+    return questions
+
 
 def get_categories():
     try:
-        if not QUESTIONS_FILE.exists():
-            return list(EXAM_PASSWORDS.keys())
-        df = pd.read_excel(QUESTIONS_FILE)
-        # Ищем колонку категории
-        cat_col = next((c for c in df.columns if 'cat' in str(c).lower()), None)
-        if cat_col:
-            cats = sorted(df[cat_col].dropna().unique().astype(str).tolist())
-            return ["Все категории"] + cats
+        if not CATEGORY_FILE.exists():
+            return {"-1": {"Описание":"Все категории", "Пароль": ""}}
+        
+        df = pd.read_excel(CATEGORY_FILE)
+        df = df.astype(str)
+
+        if 'Состояние' in df.columns:
+            df = df.drop(columns=['Состояние'])        
+
+        result_dict = df.set_index('Код', drop=False).to_dict(orient='index')
+        result_dict["-1"] = {"Описание":"Все категории", "Пароль": ""}
+        return result_dict
     except Exception:
         pass
-    return ["Все категории"]
+    return {"-1": {"Описание":"Все категории", "Пароль": ""}}
 
 def save_result_to_excel(student, score, answered, total, category, time, warning):
     try:
@@ -102,6 +88,3 @@ def save_result_to_excel(student, score, answered, total, category, time, warnin
         df.to_excel(RESULTS_FILE, index=False)
     except Exception as e:
         print(f"Error saving result: {e}")
-
-def _get_demo_data(n):
-    return [{"question": f"Демо вопрос {i} (ответ a)", "options": {"a": "Да", "b": "Нет", "c": str(i), "d": "-"}, "correct": "a", "category": "Demo", "type": "single"} for i in range(n)]

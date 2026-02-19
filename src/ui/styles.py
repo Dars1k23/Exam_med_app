@@ -302,4 +302,41 @@ QCheckBox::indicator:checked {
 QWidget#nav_grid_container {
     background-color: transparent;     /* Темный фон (как основной фон окна) или #1A202C */
 }
+
+/* --- СКРОЛЛБАР (ТЕМНАЯ ТЕМА) --- */
+QScrollBar:vertical {
+    border: none;
+    background-color: #2D3748; /* Фон канала такой же, как у списка */
+    width: 12px;               /* Чуть шире для удобства */
+    margin: 0px;
+    border-radius: 0px;
+}
+
+/* Ползунок (ручка) */
+QScrollBar::handle:vertical {
+    background-color: #4A5568; /* Темно-серый ползунок */
+    min-height: 20px;
+    border-radius: 6px;        /* Закругленные края */
+    margin: 2px;               /* Отступ от краев канала */
+}
+
+/* Ползунок при наведении */
+QScrollBar::handle:vertical:hover {
+    background-color: #718096; /* Светлее при наведении */
+}
+
+/* Ползунок при нажатии */
+QScrollBar::handle:vertical:pressed {
+    background-color: #A0AEC0; /* Еще светлее при клике */
+}
+
+/* Скрываем стрелки вверх/вниз */
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    border: none;
+    background: none;
+    height: 0px;
+}
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+    background: none;
+}
 """

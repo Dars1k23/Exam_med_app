@@ -4,9 +4,9 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 import datetime
 
-from src.config import EXAM_PASSWORDS, REPORTS_DIR, TIME_FOR_EXAM
+from src.config import REPORTS_DIR, TIME_FOR_EXAM
 from src.core import get_categories, load_questions, save_result_to_excel
-from src.utils import ProctorThread, ScanningThread,  WebcamThread, generate_pdf, get_number_of_test
+from src.utils import ProctorThread, ScanningThread, generate_pdf, get_number_of_test
 from src.ui.widgets import ActionButton, SuccessButton, DangerButton,SkipButton, QuestionCard, AppTitle, SectionTitle, IconLabel
 
 import re
@@ -41,7 +41,8 @@ class CategoryScreen(QWidget):
         card.add_widget(SectionTitle("НАПРАВЛЕНИЕ ЭКЗАМЕНА"))
         
         self.combo = QComboBox()
-        self.combo.addItems(get_categories())
+        categories = get_categories()
+        self.combo.addItems([str(categories[key]["Описание"]) for key in categories if str(categories[key]["Описание"]) != "nan" ])
         card.add_widget(self.combo)
 
         # Находим индекс "Все категории" и выбираем его
@@ -57,7 +58,7 @@ class CategoryScreen(QWidget):
         layout.addWidget(card)
 
         btn = ActionButton("Далее →")
-        btn.clicked.connect(lambda: self.next_step.emit(self.combo.currentText()))
+        btn.clicked.connect(self.submit )
         layout.addWidget(btn)
 
 
@@ -68,6 +69,10 @@ class CategoryScreen(QWidget):
 
         layout.addStretch()
 
+    def submit(self):
+        if self.combo.currentText() != "Все категории":
+            self.next_step.emit(self.combo.currentText())
+
 # --- ЭКРАН 2: ПАРОЛЬ ---
 class LoginScreen(QWidget):
     success = pyqtSignal()
@@ -76,6 +81,7 @@ class LoginScreen(QWidget):
     def __init__(self, category):
         super().__init__()
         self.category = category
+        self.categories = get_categories()
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.setSpacing(20)
@@ -113,7 +119,13 @@ class LoginScreen(QWidget):
         layout.addStretch()
 
     def _check(self):
-        if self.pwd.text() == EXAM_PASSWORDS.get(self.category, ""):
+        find = False
+        for key in self.categories:
+            if self.categories[key]["Пароль"] == self.pwd.text() and self.categories[key]["Описание"] == self.category:
+                find = True
+                break
+
+        if find:
             self.success.emit()
         else:
             self.pwd.setStyleSheet("border: 2px solid #FC8181;")
@@ -334,11 +346,9 @@ class TestScreen(QWidget):
         self.proc_thread = ProctorThread(student, self.test_number)
         self.scanning_thread = ScanningThread()
         self.scanning_thread.violation_detected.connect(lambda p: self._update_scanning_thread(p))
-        self.cam_thread = WebcamThread(student, self.test_number)
 
         self.proc_thread.start()
         self.scanning_thread.start()
-        self.cam_thread.start()
         
         self._load_q(0)
 
@@ -480,7 +490,6 @@ class TestScreen(QWidget):
     def _stop_threads(self):
         if self.proc_thread.isRunning(): self.proc_thread.stop()
         if self.scanning_thread.isRunning(): self.scanning_thread.stop()
-        if self.cam_thread.isRunning(): self.cam_thread.stop()
         
     def closeEvent(self, event):
         self._stop_threads()

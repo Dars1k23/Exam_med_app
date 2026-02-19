@@ -1,4 +1,3 @@
-import cv2
 import pyautogui
 import datetime
 from pathlib import Path
@@ -13,7 +12,7 @@ import psutil
 # --- ПРОКТОРИНГ ---
 
 class ProctorThread(QThread):    
-    def __init__(self, student_name,test_number: Path, interval=30):
+    def __init__(self, student_name,test_number: Path, interval=5):
         super().__init__()
         self.screens_dir = REPORTS_DIR  / student_name/ test_number / "screens"
         self.screens_dir.mkdir(exist_ok=True, parents=True)
@@ -110,38 +109,6 @@ class ScanningThread(QThread):
         self._running = False
         self.quit()
 
-
-class WebcamThread(QThread):
-    def __init__(self, student_name, test_number: Path, interval=30):
-        super().__init__()
-        self.photos_dir = REPORTS_DIR / student_name / test_number / "photos"
-        self.photos_dir.mkdir(exist_ok=True, parents=True)
-        self.interval = interval
-        self._running = True
-
-    def run(self):
-        try:
-            cap = cv2.VideoCapture(0)
-            if not cap.isOpened(): return
-            
-            while self._running:
-                if not self._running: break
-                
-                ret, frame = cap.read()
-                if ret:
-                    ts = datetime.datetime.now().strftime("%H%M%S")
-                    path = self.photos_dir /f"cam_{ts}.jpg"
-                    cv2.imwrite(str(path), frame)
-
-                self.sleep(self.interval)
-            cap.release()
-        except Exception:
-            pass
-
-    def stop(self):
-        self._running = False
-        self.quit()
-        # self.wait(2000)
 
 # --- PDF ---
 def generate_pdf(student, test_number: Path, category, questions, answers, score, total):

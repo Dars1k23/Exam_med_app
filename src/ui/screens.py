@@ -329,7 +329,7 @@ class TestScreen(QWidget):
         nav_btns.addWidget(self.btn_next)
         
         self.btn_finish = SuccessButton("✓ Завершить")
-        self.btn_finish.clicked.connect(self._finish_confirm)
+        self.btn_finish.clicked.connect(lambda: self._finish_confirm())
         nav_btns.addWidget(self.btn_finish)
         self.btn_finish.hide()
         

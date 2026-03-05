@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import QMainWindow, QStackedWidget, QApplication
 from PyQt6.QtCore import Qt
-from src.ui.styles import DARK_QSS
+from src.ui.styles import DARK_QSS, LIGHT_QSS
 from src.ui.screens import CategoryScreen, LoginScreen, NameScreen, TestScreen, ResultScreen
 
 class MainWindow(QMainWindow):
@@ -17,7 +17,8 @@ class MainWindow(QMainWindow):
         )
         self._can_close = False
         
-        self.setStyleSheet(DARK_QSS)
+        self.is_dark = False
+        self.setStyleSheet(LIGHT_QSS)
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
@@ -41,10 +42,19 @@ class MainWindow(QMainWindow):
         else:
             super().keyPressEvent(event)
 
+    def _toggle_theme(self):
+        if self.is_dark:
+            self.setStyleSheet(LIGHT_QSS)
+            self.is_dark = False
+        else:
+            self.setStyleSheet(DARK_QSS)
+            self.is_dark = True
+
     def _show_category(self):
         self.cat_scr = CategoryScreen()
         self.cat_scr.next_step.connect(self._show_login)
         self.cat_scr.exit_app.connect(self._exit_app)
+        self.cat_scr.change_theme.connect(self._toggle_theme)
         self._set_screen(self.cat_scr)
 
     def _show_login(self, category):

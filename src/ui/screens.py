@@ -19,6 +19,7 @@ from pathlib import Path
 class CategoryScreen(QWidget):
     next_step = pyqtSignal(str)
     exit_app = pyqtSignal() 
+    change_theme = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -68,6 +69,24 @@ class CategoryScreen(QWidget):
 
 
         layout.addStretch()
+        
+        # Кнопка смены темы (внизу слева)
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setContentsMargins(0, 0, 0, 0)
+        
+        self.theme_btn = QPushButton("🌓")
+        self.theme_btn.setFixedSize(40, 40)
+        self.theme_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.theme_btn.setStyleSheet("""
+            QPushButton { background-color: transparent; border: 2px solid #718096; border-radius: 20px; color: #718096; font-size: 20px; }
+            QPushButton:hover { background-color: #718096; color: white; }
+        """)
+        self.theme_btn.setToolTip("Сменить тему")
+        self.theme_btn.clicked.connect(self.change_theme.emit)
+        
+        bottom_layout.addWidget(self.theme_btn)
+        bottom_layout.addStretch()
+        layout.addLayout(bottom_layout)
 
     def submit(self):
         if self.combo.currentText() != "Все категории":
@@ -170,7 +189,7 @@ class NameScreen(QWidget):
         btn_row.addWidget(s_btn)
         layout.addLayout(btn_row)
 
-        warn = QLabel("🎥 Прокторинг: скриншоты каждые 30 сек, веб-камера каждую минуту")
+        warn = QLabel("🎥 Прокторинг: создание скриншотов, сканирование работающих приложений")
         warn.setStyleSheet("color: #718096; font-size: 12px; margin-top: 20px;")
         warn.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(warn)
@@ -252,14 +271,14 @@ class TestScreen(QWidget):
         
         # Центрируем виджет таймера в панели
         timer_container = QWidget()
-        timer_container.setStyleSheet("background-color: #161B27;")
+        timer_container.setObjectName("timer_container")
         tl = QVBoxLayout(timer_container)
         tl.addWidget(self.timer_lbl)
         tl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         nav_layout.addWidget(timer_container)
         
         self.proc_lbl = QLabel("● Прокторинг активен")
-        self.proc_lbl.setStyleSheet("color: #68D391; font-size: 11px; background-color: #161B27;")
+        self.proc_lbl.setObjectName("proctor_label")
         nav_layout.addWidget(self.proc_lbl)
 
         root.addWidget(nav_panel)
@@ -540,7 +559,7 @@ class ResultScreen(QWidget):
             top_card.add_widget(warning_label)
         
         info_lbl = QLabel(f"ФИО: {data['student']}  ·  Результат: {score}/{total}")
-        info_lbl.setStyleSheet("color: #CBD5E0; font-size: 16px; max-height: 100px")
+        info_lbl.setObjectName("result_info_label")
         info_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         top_card.add_widget(info_lbl)
 

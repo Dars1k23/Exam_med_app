@@ -299,8 +299,21 @@ QCheckBox::indicator:checked {
     image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232B6CB0' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
 }
 
-QWidget#nav_grid_container {
+QWidget#nav_grid_container, QWidget#timer_container {
     background-color: transparent;     /* Темный фон (как основной фон окна) или #1A202C */
+}
+
+QLabel#proctor_label {
+    color: #68D391;
+    font-size: 11px;
+    background-color: transparent;
+}
+
+QLabel#result_info_label {
+    color: #E2E8F0;
+    font-size: 16px;
+    max-height: 100px;
+    background-color: transparent;
 }
 
 /* --- СКРОЛЛБАР (ТЕМНАЯ ТЕМА) --- */
@@ -339,4 +352,234 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
     background: none;
 }
+"""
+
+LIGHT_QSS = """
+/* === ОБЩИЕ НАСТРОЙКИ (LIGHT) === */
+QMainWindow, QWidget {
+    background-color: #F7FAFC;
+    color: #2D3748;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    font-size: 13px;
+}
+
+QWidget#nav_panel {
+    background-color: #EDF2F7;
+    border-right: 2px solid #E2E8F0;
+    border-radius: 6px;
+}
+
+/* === КНОПКИ === */
+QPushButton#nav_btn_empty {
+    background-color: #E2E8F0;
+    color: #718096;
+    border: 2px solid #CBD5E0;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+QPushButton#nav_btn_active {
+    background-color: #3182CE;
+    color: #FFFFFF;
+    border: 2px solid #2B6CB0;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+}
+QPushButton#nav_btn_answered {
+    background-color: #38A169;
+    color: #FFFFFF;
+    border: 2px solid #2F855A;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QPushButton#nav_btn_skipped {
+    background-color: #EDF2F7;
+    color: #2D3748;
+    border: 2px solid #CBD5E0;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QPushButton#action_btn {
+    background-color: #3182CE;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    min-height: 40px;
+}
+QPushButton#action_btn:hover { background-color: #2B6CB0; }
+
+QPushButton#success_btn {
+    background-color: #38A169;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    min-height: 40px;
+}
+QPushButton#success_btn:hover { background-color: #2F855A; }
+
+QPushButton#danger_btn {
+    background-color: #E53E3E;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    min-height: 40px;
+}
+
+QPushButton#skip_btn {
+    background-color: #DD6B20;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    min-height: 40px;
+}
+
+QPushButton#skip_btn:hover { background-color: #C05621; }
+
+/* === КАРТОЧКИ И ТЕКСТ === */
+QFrame#question_card {
+    background-color: #FFFFFF;
+    border: 2px solid #E2E8F0;
+    border-radius: 12px;
+}
+
+QLabel#question_label {
+    color: #2D3748;
+    font-size: 16px;
+    font-weight: 600;
+    background-color: transparent;
+}
+
+QLabel#section_title {
+    color: #718096;
+    font-size: 11px;
+    font-weight: 700;
+    background-color: transparent;
+}
+
+QLabel#app_title {
+    font-size: 32px;
+    font-weight: 800;
+    color: #3182CE;
+    background-color: transparent;
+}
+
+/* === ВВОД ДАННЫХ === */
+QRadioButton, QCheckBox {
+    color: #4A5568;
+    font-size: 14px;
+    spacing: 12px;
+    padding: 10px 12px;
+    background-color: transparent;
+}
+QRadioButton:hover, QCheckBox:hover {
+    background-color: #EDF2F7;
+    color: #2D3748;
+}
+QRadioButton:checked, QCheckBox:checked {
+    background-color: #EBF8FF;
+    color: #2B6CB0;
+    font-weight: 600;
+}
+
+QLineEdit {
+    background-color: #FFFFFF;
+    color: #2D3748;
+    border: 2px solid #CBD5E0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+    min-height: 40px;
+}
+QLineEdit:focus { border-color: #3182CE; }
+
+/* === COMBOBOX === */
+QComboBox {
+    background-color: #FFFFFF;
+    color: #2D3748;
+    border: 2px solid #CBD5E0;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 14px;
+    min-height: 40px;
+    selection-background-color: #3182CE;
+}
+QComboBox:hover { border: 2px solid #3182CE; background-color: #F7FAFC; }
+QComboBox:focus { border: 2px solid #3182CE; padding: 7px 15px; }
+QComboBox::drop-down { subcontrol-origin: padding; subcontrol-position: top right; width: 40px; border: none; }
+QComboBox::down-arrow { image: none; border: none; }
+QComboBox QAbstractItemView {
+    background-color: #FFFFFF; border: 2px solid #E2E8F0; border-radius: 8px;
+    color: #2D3748; selection-background-color: #3182CE; selection-color: #FFFFFF; outline: none; padding: 4px;
+}
+QComboBox QAbstractItemView::item { padding: 8px 10px; min-height: 30px; }
+
+/* === ТАЙМЕР === */
+QLabel#timer_label {
+    color: #D69E2E; background-color: #FFFFFF; border: 2px solid #E2E8F0;
+    border-radius: 8px; padding: 6px 12px; font-size: 20px; font-weight: 700; font-family: 'Consolas', monospace;
+}
+
+/* === ВОПРОС === */
+QLabel#question_label, QWidget#question_layout {
+    color: #2D3748; font-size: 20px; font-weight: 700; margin-bottom: 20px; background-color: transparent; line-height: 1.4;
+}
+
+/* === ВАРИАНТЫ ОТВЕТОВ === */
+QRadioButton, QCheckBox {
+    color: #4A5568; font-size: 16px; font-weight: 500; spacing: 12px; padding: 14px 20px;
+    border-radius: 12px; border: 2px solid #E2E8F0;
+}
+QRadioButton:hover, QCheckBox:hover { border: 2px solid #63B3ED; background-color: #F7FAFC; color: #2D3748; }
+QRadioButton:checked, QCheckBox:checked { background-color: #EBF8FF; border: 2px solid #3182CE; color: #2B6CB0; font-weight: 700; }
+
+QRadioButton::indicator, QCheckBox::indicator {
+    width: 24px; height: 24px; border-radius: 13px; border: 2px solid #CBD5E0; background: transparent; margin-right: 10px;
+}
+QCheckBox::indicator { border-radius: 6px; }
+QRadioButton::indicator:checked, QCheckBox::indicator:checked { border-color: #3182CE; background-color: #3182CE; }
+
+QRadioButton::indicator:checked {
+    image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23FFFFFF'><circle cx='12' cy='12' r='6'/></svg>");
+}
+QCheckBox::indicator:checked {
+    image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+}
+
+QWidget#nav_grid_container, QWidget#timer_container { background-color: transparent; }
+
+QLabel#proctor_label {
+    color: #2F855A;
+    font-size: 11px;
+    background-color: transparent;
+}
+
+QLabel#result_info_label {
+    color: #4A5568;
+    font-size: 16px;
+    max-height: 100px;
+    background-color: transparent;
+}
+
+QScrollBar:vertical { border: none; background-color: #EDF2F7; width: 12px; margin: 0px; }
+QScrollBar::handle:vertical { background-color: #CBD5E0; min-height: 20px; border-radius: 6px; margin: 2px; }
+QScrollBar::handle:vertical:hover { background-color: #A0AEC0; }
+QScrollBar::handle:vertical:pressed { background-color: #718096; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical, QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; height: 0px; }
 """

@@ -1,2 +1,2 @@
-/home/semyon/Downloads/Telegram Desktop/NOK_pediatric_surgery_1000_items_v3.xlsx
-/work/EXAM_APP_MED/data/NOK.xlsx
+NOK_pediatric_surgery_1000_items_v3
+NOK

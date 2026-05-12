@@ -1,4 +1,5 @@
 import os
+from src.config import DATA_DIR
 
 def get_db_paths(file_path="dataBasePath.txt"):
     """
@@ -9,11 +10,10 @@ def get_db_paths(file_path="dataBasePath.txt"):
     if os.path.exists(file_path):
         with open(file_path, 'r', encoding='utf-8') as f:
             for line in f:
-                path = line.strip()
-                if path:
-                    # Получаем название файла из пути
-                    filename = os.path.basename(path)
-                    result[filename]=path
+                filename = line.strip()
+                if filename:
+                    path = DATA_DIR / (filename + ".xlsx")
+                    result[filename]=str(path)
     else:
         print(f"Файл {file_path} не найден.")
     

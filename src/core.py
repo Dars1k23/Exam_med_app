@@ -3,7 +3,7 @@ import os
 from src.config import RESULTS_FILE
 from datetime import datetime
 
-def load_questions(db_path: str, kr_name: str = None, n: int = 100):
+def load_questions(db_path: str, variant_name: str = None, n: int = 100):
     try:
         if not os.path.exists(db_path):
             print(f"File not found: {db_path}")
@@ -20,10 +20,10 @@ def load_questions(db_path: str, kr_name: str = None, n: int = 100):
             print("Required columns not found")
             return _get_demo_data(n)
 
-        kr_col = next((c for c in df.columns if "кр (название)" in c or ("кр" in c and "название" in c)), None)
+        variant_col = next((c for c in df.columns if "вариант" in c), None)
 
-        if kr_name and kr_col:
-            df = df[df[kr_col].astype(str).str.strip() == kr_name]
+        if variant_name and variant_col:
+            df = df[df[variant_col].astype(str).str.strip() == variant_name]
 
         def normalize_correct(value):
             answer_map = {
@@ -76,7 +76,7 @@ def load_questions(db_path: str, kr_name: str = None, n: int = 100):
                 "options": options,
                 "correct": correct,
                 "explanation": explanation,
-                "kr": db_name,
+                "variant": db_name,
                 "type": q_type,
             })
 
@@ -87,12 +87,12 @@ def load_questions(db_path: str, kr_name: str = None, n: int = 100):
         return _get_demo_data(n)
 
 
-def save_result_to_excel(student, score, answered, total, kr, time):
+def save_result_to_excel(student, score, answered, total, variant, time):
     try:
         new_row = {
             "Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "Student": student,
-            "КР": kr,
+            "Вариант": variant,
             "Score": score,
             "Answered": answered,
             "Total": total,
@@ -109,4 +109,4 @@ def save_result_to_excel(student, score, answered, total, kr, time):
         print(f"Error saving result: {e}")
 
 def _get_demo_data(n):
-    return [{"question": f"Демо вопрос {i} (ответ a)", "options": {"a": "Да", "b": "Нет", "c": str(i), "d": "-"}, "correct": "a", "kr": "Demo DB", "type": "single"} for i in range(n)]
+    return [{"question": f"Демо вопрос {i} (ответ a)", "options": {"a": "Да", "b": "Нет", "c": str(i), "d": "-"}, "correct": "a", "variant": "Demo DB", "type": "single"} for i in range(n)]

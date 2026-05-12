@@ -123,7 +123,7 @@ class DatabaseScreen(QWidget):
         b_btn.clicked.connect(self.back.emit)
         btn_row.addWidget(b_btn)
         
-        self.s_btn = SuccessButton("▶ Начать тест")
+        self.s_btn = SuccessButton("Далее →")
         self.s_btn.setEnabled(False)
         self.s_btn.clicked.connect(lambda: self.start_test.emit(self.combo.currentData() or ""))
         
@@ -140,16 +140,17 @@ class DatabaseScreen(QWidget):
         else:
             self.s_btn.setEnabled(False)
 
-from src.kr_mapper import map_kr_to_rows
+from src.variant_mapper import map_variant_to_rows
 
-# --- ЭКРАН 3: ВЫБОР КР ---
-class KRScreen(QWidget):
+# --- ЭКРАН 3: ВЫБОР ВАРИАНТА ---
+class VariantScreen(QWidget):
     start_test = pyqtSignal(str)
     back = pyqtSignal()
 
-    def __init__(self, db_path):
+    def __init__(self, db_path, is_validator=False):
         super().__init__()
         self.db_path = db_path
+        self.is_validator = is_validator
         
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -159,7 +160,7 @@ class KRScreen(QWidget):
         layout.addWidget(IconLabel("⚕", "#3182CE"))
         layout.addWidget(AppTitle("Medical Test System"))
         
-        sub = QLabel("Шаг 3: Выберите КР для экзамена")
+        sub = QLabel("Шаг 3: Выберите вариант для экзамена" if is_validator else "Шаг 3: Нажмите для начала теста (Вариант будет выбран случайно)")
         sub.setStyleSheet("color: #718096; font-size: 16px;")
         sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(sub)
@@ -167,17 +168,22 @@ class KRScreen(QWidget):
         layout.addSpacing(20)
 
         card = QuestionCard()
-        card.add_widget(SectionTitle("КЛИНИЧЕСКИЕ РЕКОМЕНДАЦИИ"))
+        card.add_widget(SectionTitle("ВАРИАНТ ЭКЗАМЕНА"))
         
         self.combo = QComboBox()
-        self.combo.addItem("Выберите КР...", "")
+        self.combo.addItem("Выберите вариант...", "")
         
-        kr_mapping = map_kr_to_rows(db_path)
-        for kr_name, rows in kr_mapping.items():
-            self.combo.addItem(f"{kr_name} ({len(rows)} вопросов)", kr_name)
+        variant_mapping = map_variant_to_rows(db_path)
+        self.variants = list(variant_mapping.keys())
+        for variant_name, rows in variant_mapping.items():
+            self.combo.addItem(f"{variant_name} ({len(rows)} вопросов)", variant_name)
             
         card.add_widget(self.combo)
         
+        if not is_validator:
+            self.combo.hide() # Студент не выбирает сам
+            card.add_widget(QLabel("Вариант будет выбран автоматически."))
+
         layout.addWidget(card)
 
         btn_row = QHBoxLayout()
@@ -186,8 +192,12 @@ class KRScreen(QWidget):
         btn_row.addWidget(b_btn)
         
         self.s_btn = SuccessButton("▶ Начать тест")
-        self.s_btn.setEnabled(False)
-        self.s_btn.clicked.connect(lambda: self.start_test.emit(self.combo.currentData() or ""))
+        if is_validator:
+            self.s_btn.setEnabled(False)
+            self.s_btn.clicked.connect(lambda: self.start_test.emit(self.combo.currentData() or ""))
+        else:
+            self.s_btn.setEnabled(True)
+            self.s_btn.clicked.connect(self._start_random)
         
         self.combo.currentIndexChanged.connect(self._on_combo_changed)
         
@@ -195,6 +205,14 @@ class KRScreen(QWidget):
         layout.addLayout(btn_row)
 
         layout.addStretch()
+
+    def _start_random(self):
+        import random
+        if self.variants:
+            v = random.choice(self.variants)
+            self.start_test.emit(v)
+        else:
+            self.start_test.emit("")
 
     def _on_combo_changed(self):
         if self.combo.currentData():
@@ -206,20 +224,42 @@ class KRScreen(QWidget):
 class TestScreen(QWidget):
     finished = pyqtSignal(dict)
 
-    def __init__(self, student, db_path, kr_name):
+    def __init__(self, student, db_path, variant_name):
         super().__init__()
         self.student = student
         self.db_path = db_path
-        self.kr_name = kr_name
-        self.kr = kr_name if kr_name else (os.path.basename(db_path) if db_path else "Unknown DB")
-        self.questions = load_questions(db_path, kr_name=kr_name)
-        self.answers = {}
+        self.variant_name = variant_name # Это начальный вариант (может быть переопределен из tmp)
+        
+        # Логика восстановления или инициализации
+        import re
+        db_name = os.path.basename(self.db_path).replace('.xlsx', '') if self.db_path else "Unknown_DB"
+        safe_db_name = re.sub(r'[\\/*?:"<>|]', "_", db_name)
+        # Директория теста ТЕПЕРЬ НЕ СОДЕРЖИТ названия варианта
+        self.test_dir_name = Path(f"{safe_db_name}")
+        
+        tmp_path = REPORTS_DIR / self.student / self.test_dir_name / "tmp.txt"
+        self.data_for_tmp = { "start_exams": 0, "answers": {}, "variant": self.variant_name}
+        
+        if os.path.exists(tmp_path):
+            self._read_tmp_file()
+            self.variant = self.data_for_tmp.get("variant", self.variant_name)
+            self.start_time = datetime.datetime.fromtimestamp(self.data_for_tmp["start_exams"])
+            self.answers = self.data_for_tmp.get("answers", {})
+        else:
+            self.variant = self.variant_name if self.variant_name else (os.path.basename(db_path) if db_path else "Unknown DB")
+            self.start_time = datetime.datetime.now()
+            self.data_for_tmp["start_exams"] = self.start_time.timestamp()
+            self.data_for_tmp["variant"] = self.variant
+            self.answers = {}
+
+            os.makedirs(REPORTS_DIR / self.student / self.test_dir_name, exist_ok=True)
+            self._update_tmp_file()
+
+        self.questions = load_questions(db_path, variant_name=self.variant)
         self.skipped = set()
         self.current_idx = 0
         self.widgets = [] # Инициализируем сразу! (Fix AttributeError)
         self.nav_buttons = []
-        self.data_for_tmp = { "start_exams": 0, "answers": {}}
-        
         
         # Основной Layout
         root = QHBoxLayout(self)
@@ -334,30 +374,6 @@ class TestScreen(QWidget):
         c_layout.addLayout(nav_btns)
         root.addWidget(center)
         
-        
-
-        # Логика
-
-        # Используем название БД и КР для сохранения временных файлов
-        import re
-        db_name = os.path.basename(self.db_path).replace('.xlsx', '') if self.db_path else "Unknown_DB"
-        safe_db_name = re.sub(r'[\\/*?:"<>|]', "_", db_name)
-        safe_kr_name = re.sub(r'[\\/*?:"<>|]', "_", self.kr)
-        self.test_dir_name = Path(f"{safe_db_name}_{safe_kr_name}")
-        
-        tmp_path = REPORTS_DIR / self.student / self.test_dir_name / "tmp.txt"
-        if os.path.exists(tmp_path):
-            self._read_tmp_file()
-            self.start_time = datetime.datetime.fromtimestamp(self.data_for_tmp["start_exams"])
-            self.answers = self.data_for_tmp.get("answers", {})
-        else:
-            self.start_time = datetime.datetime.now()
-            self.data_for_tmp["start_exams"] = self.start_time.timestamp()
-
-            os.makedirs(REPORTS_DIR / self.student / self.test_dir_name, exist_ok=True)
-
-            self._update_tmp_file()
-
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._update_timer)
         self.timer.start(1000)
@@ -500,7 +516,7 @@ class TestScreen(QWidget):
             self._stop_threads()
             self.timer.stop()
             self.finished.emit({
-                "student": self.student, "kr": self.kr,
+                "student": self.student, "variant": self.variant,
                 "questions": self.questions, "answers": self.answers,
                 "elapsed": (datetime.datetime.now() - self.start_time).seconds if (datetime.datetime.now() - self.start_time).seconds < TIME_FOR_EXAM  else TIME_FOR_EXAM,
                 "test_dir_name": self.test_dir_name,
@@ -533,10 +549,10 @@ class ResultScreen(QWidget):
                 score += 1
                 
         percent = int(score/total*100) if total else 0
-        save_result_to_excel(data['student'], score, len(data['answers']), total, data['kr'], data["elapsed"])
+        save_result_to_excel(data['student'], score, len(data['answers']), total, data['variant'], data["elapsed"])
         
         db_name = os.path.basename(data.get('db_path', '')).replace('.xlsx', '')
-        generate_pdf(data['student'], data["test_dir_name"], data['kr'], data['questions'], data['answers'], score, total, data["elapsed"], db_name)
+        generate_pdf(data['student'], data["test_dir_name"], data['variant'], data['questions'], data['answers'], score, total, data["elapsed"], db_name)
                 
         container = QWidget()
         c_layout = QVBoxLayout(container)
@@ -625,21 +641,21 @@ class ValidatorDatabaseScreen(DatabaseScreen):
         super().__init__()
         # Наследуем UI из обычного выбора БД
         
-class ValidatorKRScreen(KRScreen):
-    def __init__(self, db_path):
-        super().__init__(db_path)
+class ValidatorVariantScreen(VariantScreen):
+    def __init__(self, db_path, is_validator=True):
+        super().__init__(db_path, is_validator=is_validator)
 
 
 class ValidatorTestScreen(QWidget):
     finished = pyqtSignal(dict)
 
-    def __init__(self, validator_login, db_path, kr_name):
+    def __init__(self, validator_login, db_path, variant_name):
         super().__init__()
         self.validator_login = validator_login
         self.db_path = db_path
-        self.kr_name = kr_name
-        self.kr = kr_name if kr_name else (os.path.basename(db_path) if db_path else "Unknown DB")
-        self.questions = load_questions(db_path, kr_name=kr_name)
+        self.variant_name = variant_name
+        self.variant = variant_name if variant_name else (os.path.basename(db_path) if db_path else "Unknown DB")
+        self.questions = load_questions(db_path, variant_name=variant_name)
         self.answers = {}
         self.validity = {} # Сохранение статуса "Валидный вопрос"
         self.skipped = set()
@@ -835,7 +851,7 @@ class ValidatorTestScreen(QWidget):
         if reply == QMessageBox.StandardButton.Yes:
             db_name = os.path.basename(self.db_path).replace('.xlsx', '') if self.db_path else "Unknown_DB"
             self.finished.emit({
-                "validator": self.validator_login, "kr": self.kr,
+                "validator": self.validator_login, "variant": self.variant,
                 "questions": self.questions, "answers": self.answers,
                 "validity": self.validity, "db_path": self.db_path, "db_name": db_name
             })
@@ -852,7 +868,7 @@ class ValidatorResultScreen(QWidget):
         
         generate_validator_pdf(
             validator=data['validator'],
-            kr=data['kr'],
+            variant=data['variant'],
             questions=data['questions'],
             answers=data['answers'],
             validity=data['validity'],
@@ -870,7 +886,7 @@ class ValidatorResultScreen(QWidget):
         score_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         top_card.add_widget(score_lbl)
         
-        info_lbl = QLabel(f"Валидатор: {data['validator']}  ·  База: {data['db_name']}  ·  КР: {data['kr']}")
+        info_lbl = QLabel(f"Валидатор: {data['validator']}  ·  База: {data['db_name']}  ·  Вариант: {data['variant']}")
         info_lbl.setStyleSheet("color: #CBD5E0; font-size: 16px; max-height: 100px")
         info_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         top_card.add_widget(info_lbl)

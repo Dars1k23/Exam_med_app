@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import QMainWindow, QStackedWidget
 from src.ui.styles import DARK_QSS
-from src.ui.screens import (DatabaseScreen, NameScreen, KRScreen, TestScreen, ResultScreen,
-                            ValidatorLoginScreen, ValidatorDatabaseScreen, ValidatorKRScreen, ValidatorTestScreen, ValidatorResultScreen)
+from src.ui.screens import (DatabaseScreen, NameScreen, VariantScreen, TestScreen, ResultScreen,
+                            ValidatorLoginScreen, ValidatorDatabaseScreen, ValidatorVariantScreen, ValidatorTestScreen, ValidatorResultScreen)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -25,17 +25,17 @@ class MainWindow(QMainWindow):
     def _show_database(self, name):
         self.db_scr = DatabaseScreen()
         self.db_scr.back.connect(self._show_name)
-        self.db_scr.start_test.connect(lambda db_path: self._show_kr(name, db_path))
+        self.db_scr.start_test.connect(lambda db_path: self._show_variant(name, db_path))
         self._set_screen(self.db_scr)
 
-    def _show_kr(self, name, db_path):
-        self.kr_scr = KRScreen(db_path)
-        self.kr_scr.back.connect(lambda: self._show_database(name))
-        self.kr_scr.start_test.connect(lambda kr_name: self._start_test(name, db_path, kr_name))
-        self._set_screen(self.kr_scr)
+    def _show_variant(self, name, db_path):
+        self.variant_scr = VariantScreen(db_path, is_validator=False)
+        self.variant_scr.back.connect(lambda: self._show_database(name))
+        self.variant_scr.start_test.connect(lambda variant_name: self._start_test(name, db_path, variant_name))
+        self._set_screen(self.variant_scr)
 
-    def _start_test(self, student, db_path, kr_name):
-        self.test_scr = TestScreen(student, db_path, kr_name)
+    def _start_test(self, student, db_path, variant_name):
+        self.test_scr = TestScreen(student, db_path, variant_name)
         self.test_scr.finished.connect(self._show_result)
         self._set_screen(self.test_scr)
 
@@ -54,17 +54,17 @@ class MainWindow(QMainWindow):
     def _show_validator_db(self, validator_login):
         self.v_db_scr = ValidatorDatabaseScreen()
         self.v_db_scr.back.connect(self._show_validator_login)
-        self.v_db_scr.start_test.connect(lambda db_path: self._show_validator_kr(validator_login, db_path))
+        self.v_db_scr.start_test.connect(lambda db_path: self._show_validator_variant(validator_login, db_path))
         self._set_screen(self.v_db_scr)
 
-    def _show_validator_kr(self, validator_login, db_path):
-        self.v_kr_scr = ValidatorKRScreen(db_path)
-        self.v_kr_scr.back.connect(lambda: self._show_validator_db(validator_login))
-        self.v_kr_scr.start_test.connect(lambda kr_name: self._start_validator_test(validator_login, db_path, kr_name))
-        self._set_screen(self.v_kr_scr)
+    def _show_validator_variant(self, validator_login, db_path):
+        self.v_variant_scr = ValidatorVariantScreen(db_path, is_validator=True)
+        self.v_variant_scr.back.connect(lambda: self._show_validator_db(validator_login))
+        self.v_variant_scr.start_test.connect(lambda variant_name: self._start_validator_test(validator_login, db_path, variant_name))
+        self._set_screen(self.v_variant_scr)
 
-    def _start_validator_test(self, validator_login, db_path, kr_name):
-        self.v_test_scr = ValidatorTestScreen(validator_login, db_path, kr_name)
+    def _start_validator_test(self, validator_login, db_path, variant_name):
+        self.v_test_scr = ValidatorTestScreen(validator_login, db_path, variant_name)
         self.v_test_scr.finished.connect(self._show_validator_result)
         self._set_screen(self.v_test_scr)
 

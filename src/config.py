@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+from src.vault import DATA_DIR_OPEN
 
 TIME_FOR_EXAM = 30*60
 
@@ -22,9 +23,10 @@ def get_bundle_dir() -> Path:
         return Path(meipass)
     return Path(__file__).resolve().parent.parent
 
+
 # Пути
 BASE_DIR = get_base_path()
-DATA_DIR = BASE_DIR / "data"
+DATA_DIR = DATA_DIR_OPEN
 REPORTS_DIR = DATA_DIR / "reports"
 QUESTIONS_FILE = DATA_DIR / "Вопросы.xlsx"
 SECTIONS_FILE = DATA_DIR / "Разделы.xlsx"

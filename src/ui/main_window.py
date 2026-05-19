@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QMainWindow, QStackedWidget
+from PyQt6.QtWidgets import QMainWindow, QStackedWidget, QMessageBox
 from src.ui.styles import DARK_QSS
 from src.ui.screens import (DatabaseScreen, NameScreen, VariantScreen, TestScreen, ResultScreen,
                             ValidatorLoginScreen, ValidatorDatabaseScreen, ValidatorVariantScreen, ValidatorTestScreen, ValidatorResultScreen)
@@ -14,6 +14,20 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.stack)
         
         self._show_name()
+
+    def closeEvent(self, event):
+        # Если текущий экран - тест (студента или валидатора), спрашиваем подтверждение
+        current = self.stack.currentWidget()
+        if isinstance(current, (TestScreen, ValidatorTestScreen)):
+            reply = QMessageBox.question(self, "Выход", 
+                                       "Тестирование еще не завершено. Вы уверены, что хотите закрыть приложение?",
+                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.Yes:
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            event.accept()
 
     # --- РЕЖИМ СТУДЕНТА ---
     def _show_name(self):

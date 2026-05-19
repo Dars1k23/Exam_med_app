@@ -330,6 +330,17 @@ class TestScreen(QWidget):
         self.prog_lbl.setStyleSheet("color: #A0AEC0; font-size: 13px;")
         c_layout.addWidget(self.prog_lbl)
         
+        # Область прокрутки
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setStyleSheet("background: transparent;")
+        
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("background: transparent;")
+        self.scroll_layout = QVBoxLayout(scroll_content)
+        self.scroll_layout.setContentsMargins(0, 0, 10, 0)
+        
         # Карточка вопроса
         self.q_card = QuestionCard()
         self.q_lbl = QLabel()
@@ -343,10 +354,13 @@ class TestScreen(QWidget):
         self.opt_container.setObjectName("question_layout")
         self.q_card.add_widget(self.opt_container)
         
-        c_layout.addWidget(self.q_card)
-        c_layout.addStretch()
+        self.scroll_layout.addWidget(self.q_card)
+        self.scroll_layout.addStretch()
+        
+        self.scroll.setWidget(scroll_content)
+        c_layout.addWidget(self.scroll)
 
-         # Кнопки внизу
+         # Кнопки внизу (не прокручиваются)
         nav_btns = QHBoxLayout()
         nav_btns.setSpacing(15) # Расстояние между кнопками
         
@@ -429,7 +443,7 @@ class TestScreen(QWidget):
         q = self.questions[idx]
         
         self.prog_lbl.setText(f"Вопрос {idx+1} из {len(self.questions)}")
-        self.q_lbl.setText(f"<b>{q['question']}</b>")
+        self.q_lbl.setText(f"<b>{q['question'].replace('\n', '<br>')}</b>")
         
         # Очистка
         while self.opt_layout.count():
@@ -497,16 +511,31 @@ class TestScreen(QWidget):
         self.skipped.add(self.current_idx)
         self._next()
 
-    def _finish_confirm(self, ask = True):
+    def _finish_confirm(self, checked=None, ask=True):
+        # Если вызвало нажатием кнопки (checked будет False или True от сигнала clicked)
+        # или если явно передано ask=True
+        is_user_triggered = (checked is not None and not isinstance(checked, datetime.datetime)) or ask is True
+        
         self._save_ans()
         end = False
-        if ask:
-            reply = QMessageBox.question(self, "Завершение", 
-                                        f"Отвечено: {len(self.answers)}/{len(self.questions)}\nЗавершить тест?",
+        
+        if is_user_triggered and ask is not False:
+            answered = len(self.answers)
+            total = len(self.questions)
+            unanswered = total - answered
+            
+            msg = f"Вы ответили на {answered} из {total} вопросов."
+            if unanswered > 0:
+                msg += f"\n\n⚠️ Внимание: {unanswered} вопросов остались без ответа!"
+            
+            msg += "\n\nВы действительно хотите завершить тест?"
+            
+            reply = QMessageBox.question(self, "Завершение теста", msg,
                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes:
                 end = True
         else:
+            # Сюда попадаем только при автоматическом завершении (например, по таймеру)
             end = True
         
         if end:
@@ -711,11 +740,29 @@ class ValidatorTestScreen(QWidget):
         self.prog_lbl.setStyleSheet("color: #A0AEC0; font-size: 13px;")
         c_layout.addWidget(self.prog_lbl)
         
+        # Область прокрутки
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self.scroll.setStyleSheet("background: transparent;")
+        
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("background: transparent;")
+        self.scroll_layout = QVBoxLayout(scroll_content)
+        self.scroll_layout.setContentsMargins(0, 0, 10, 0)
+
         self.q_card = QuestionCard()
         self.q_lbl = QLabel()
         self.q_lbl.setObjectName("question_label")
         self.q_lbl.setWordWrap(True)
         self.q_card.add_widget(self.q_lbl)
+        
+        # Надпись "Не валиден" (между вопросом и вариантами)
+        self.status_lbl = QLabel("⚠️ НЕ ВАЛИДЕН")
+        self.status_lbl.setStyleSheet("color: #FC8181; font-weight: bold; font-size: 18px; margin: 10px 0;")
+        self.status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_lbl.hide()
+        self.q_card.add_widget(self.status_lbl)
         
         self.opt_container = QWidget()
         self.opt_layout = QVBoxLayout(self.opt_container)
@@ -728,8 +775,28 @@ class ValidatorTestScreen(QWidget):
         self.validity_cb.stateChanged.connect(self._save_ans)
         self.q_card.add_widget(self.validity_cb)
         
-        c_layout.addWidget(self.q_card)
-        c_layout.addStretch()
+        self.scroll_layout.addWidget(self.q_card)
+        
+        # Ответ и обоснование (скрыты по умолчанию)
+        self.ans_card = QuestionCard()
+        self.ans_card.setObjectName("answer_card")
+        self.ans_card.setStyleSheet("background-color: #1A365D; border: 1px solid #3182CE; margin-top: 20px;")
+        self.ans_lbl = QLabel()
+        self.ans_lbl.setWordWrap(True)
+        self.ans_lbl.setStyleSheet("color: #90CDF4; font-weight: bold; font-size: 15px;")
+        self.ans_card.add_widget(self.ans_lbl)
+        
+        self.expl_lbl = QLabel()
+        self.expl_lbl.setWordWrap(True)
+        self.expl_lbl.setStyleSheet("color: #E2E8F0; font-size: 14px; margin-top: 8px;")
+        self.ans_card.add_widget(self.expl_lbl)
+        
+        self.ans_card.hide()
+        self.scroll_layout.addWidget(self.ans_card)
+        self.scroll_layout.addStretch()
+        
+        self.scroll.setWidget(scroll_content)
+        c_layout.addWidget(self.scroll)
 
         nav_btns = QHBoxLayout()
         nav_btns.setSpacing(15)
@@ -777,7 +844,7 @@ class ValidatorTestScreen(QWidget):
         q = self.questions[idx]
         
         self.prog_lbl.setText(f"Вопрос {idx+1} из {len(self.questions)}")
-        self.q_lbl.setText(f"<b>{q['question']}</b>")
+        self.q_lbl.setText(f"<b>{q['question'].replace('\n', '<br>')}</b>")
         
         while self.opt_layout.count():
             item = self.opt_layout.takeAt(0)
@@ -809,6 +876,13 @@ class ValidatorTestScreen(QWidget):
         # Галочка валидности (по умолчанию считаем валидным, если еще не сохраняли)
         is_valid = self.validity.get(idx, True)
         self.validity_cb.setChecked(is_valid)
+        self.status_lbl.setVisible(not is_valid)
+
+        # Обновляем инфо об ответе
+        if idx in self.answers:
+            self._show_explanation(q)
+        else:
+            self.ans_card.hide()
 
         self._update_nav()
         
@@ -818,24 +892,54 @@ class ValidatorTestScreen(QWidget):
         self.btn_next.setEnabled(not is_last)
         self.btn_finish.setVisible(True)
 
+    def _show_explanation(self, q):
+        correct_key = q['correct'].upper()
+        # Получаем текст правильного ответа
+        correct_text = ""
+        if ',' in q['correct']:
+            keys = q['correct'].split(',')
+            parts = [f"{k.upper()}: {q['options'].get(k, '')}" for k in keys]
+            correct_text = "Правильные ответы:\n" + "\n".join(parts)
+        else:
+            correct_text = f"Правильный ответ: {correct_key} ({q['options'].get(q['correct'], '')})"
+            
+        self.ans_lbl.setText(correct_text)
+        
+        expl = q.get('explanation', '')
+        if expl and expl.lower() != 'nan':
+            self.expl_lbl.setText(f"<b>Обоснование:</b><br>{expl}")
+            self.expl_lbl.show()
+        else:
+            self.expl_lbl.hide()
+            
+        self.ans_card.show()
+
     def _save_ans(self):
         if not hasattr(self, 'widgets') or not self.widgets:
             return
 
-        self.validity[self.current_idx] = self.validity_cb.isChecked()
+        is_valid = self.validity_cb.isChecked()
+        self.validity[self.current_idx] = is_valid
+        self.status_lbl.setVisible(not is_valid)
 
         q = self.questions[self.current_idx]
+        has_answer = False
         if q['type'] == 'multiple':
             selected = [k for k, w in self.widgets if w.isChecked()]
             if selected: 
                 self.answers[self.current_idx] = ",".join(sorted(selected))
                 self.skipped.discard(self.current_idx)
+                has_answer = True
         else:
             for k, w in self.widgets:
                 if w.isChecked():
                     self.answers[self.current_idx] = k
                     self.skipped.discard(self.current_idx)
+                    has_answer = True
                     break
+        
+        if has_answer:
+            self._show_explanation(q)
 
     def _next(self): self._load_q(self.current_idx + 1)
     def _back(self): self._load_q(self.current_idx - 1)
@@ -845,8 +949,17 @@ class ValidatorTestScreen(QWidget):
 
     def _finish_confirm(self):
         self._save_ans()
-        reply = QMessageBox.question(self, "Завершение", 
-                                    f"Отвечено: {len(self.answers)}/{len(self.questions)}\nЗавершить валидацию?",
+        answered = len(self.answers)
+        total = len(self.questions)
+        unanswered = total - answered
+        
+        msg = f"Отвечено на {answered} из {total} вопросов."
+        if unanswered > 0:
+            msg += f"\n\n⚠️ Внимание: {unanswered} вопросов остались без ответа!"
+        
+        msg += "\n\nВы действительно хотите завершить валидацию?"
+        
+        reply = QMessageBox.question(self, "Завершение валидации", msg,
                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
             db_name = os.path.basename(self.db_path).replace('.xlsx', '') if self.db_path else "Unknown_DB"

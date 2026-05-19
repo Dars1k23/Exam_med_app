@@ -13,6 +13,7 @@ def load_questions(db_path: str, variant_name: str = None, n: int = 100):
         df.columns = [str(c).strip().lower() for c in df.columns]
 
         question_col = next((c for c in df.columns if "вопрос" in c or "question" in c), None)
+        situation_col = next((c for c in df.columns if "ситуация" in c or "situation" in c or "кейс" in c or "case" in c), None)
         correct_col = next((c for c in df.columns if "правильный ответ" in c or "верный" in c or "correct" in c), None)
         explanation_col = next((c for c in df.columns if "обоснование" in c), None)
 
@@ -71,8 +72,17 @@ def load_questions(db_path: str, variant_name: str = None, n: int = 100):
 
             q_type = "multiple" if "," in correct else "single"
 
+            # Формируем текст вопроса (ситуация + вопрос)
+            sit_text = str(row.get(situation_col, "")).strip() if situation_col else ""
+            q_text = str(row.get(question_col, "?")).strip()
+            
+            if sit_text and sit_text.lower() != "nan" and sit_text != q_text:
+                full_q = f"{sit_text}\n\n{q_text}"
+            else:
+                full_q = q_text
+
             questions.append({
-                "question": str(row.get(question_col, "?")).strip(),
+                "question": full_q,
                 "options": options,
                 "correct": correct,
                 "explanation": explanation,

@@ -4,3 +4,4 @@ openpyxl
 fpdf2
 pyautogui
 opencv-python
+py7zr

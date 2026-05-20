@@ -686,7 +686,7 @@ class ValidatorTestScreen(QWidget):
         self.variant = variant_name if variant_name else (os.path.basename(db_path) if db_path else "Unknown DB")
         self.questions = load_questions(db_path, variant_name=variant_name)
         self.answers = {}
-        self.validity = {} # Сохранение статуса "Валидный вопрос"
+        self.validity = {} # Сохранение статуса валидности (is_valid)
         self.skipped = set()
         self.current_idx = 0
         self.widgets = [] 
@@ -770,8 +770,8 @@ class ValidatorTestScreen(QWidget):
         self.opt_container.setObjectName("question_layout")
         self.q_card.add_widget(self.opt_container)
 
-        self.validity_cb = QCheckBox("Валидный вопрос")
-        self.validity_cb.setStyleSheet("color: #68D391; font-weight: bold; margin-top: 15px;")
+        self.validity_cb = QCheckBox("не валидный")
+        self.validity_cb.setStyleSheet("color: #FC8181; font-weight: bold; margin-top: 15px;")
         self.validity_cb.stateChanged.connect(self._save_ans)
         self.q_card.add_widget(self.validity_cb)
         
@@ -875,7 +875,7 @@ class ValidatorTestScreen(QWidget):
         
         # Галочка валидности (по умолчанию считаем валидным, если еще не сохраняли)
         is_valid = self.validity.get(idx, True)
-        self.validity_cb.setChecked(is_valid)
+        self.validity_cb.setChecked(not is_valid)
         self.status_lbl.setVisible(not is_valid)
 
         # Обновляем инфо об ответе
@@ -918,7 +918,7 @@ class ValidatorTestScreen(QWidget):
         if not hasattr(self, 'widgets') or not self.widgets:
             return
 
-        is_valid = self.validity_cb.isChecked()
+        is_valid = not self.validity_cb.isChecked()
         self.validity[self.current_idx] = is_valid
         self.status_lbl.setVisible(not is_valid)
 

@@ -19,10 +19,15 @@ class MainWindow(QMainWindow):
         # Если текущий экран - тест (студента или валидатора), спрашиваем подтверждение
         current = self.stack.currentWidget()
         if isinstance(current, (TestScreen, ValidatorTestScreen)):
-            reply = QMessageBox.question(self, "Выход", 
-                                       "Тестирование еще не завершено. Вы уверены, что хотите закрыть приложение?",
-                                       QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if reply == QMessageBox.StandardButton.Yes:
+            box = QMessageBox(self)
+            box.setWindowTitle("Выход")
+            box.setText("Тестирование еще не завершено. Вы уверены, что хотите закрыть приложение?")
+            box.setIcon(QMessageBox.Icon.Question)
+            yes_btn = box.addButton("Да", QMessageBox.ButtonRole.YesRole)
+            no_btn = box.addButton("Нет", QMessageBox.ButtonRole.NoRole)
+            box.exec()
+            
+            if box.clickedButton() == yes_btn:
                 event.accept()
             else:
                 event.ignore()

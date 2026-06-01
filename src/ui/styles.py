@@ -39,6 +39,15 @@ QPushButton#nav_btn_answered {
     font-weight: 600;
 }
 
+QPushButton#nav_btn_incorrect {
+    background-color: #742A2A;
+    color: #FFFFFF;
+    border: 2px solid #E53E3E;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
 QPushButton#nav_btn_skipped {
     background-color: #171D28;
     color: #FFFFFF;

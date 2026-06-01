@@ -238,19 +238,23 @@ class TestScreen(QWidget):
         self.test_dir_name = Path(f"{safe_db_name}")
         
         tmp_path = REPORTS_DIR / self.student / self.test_dir_name / "tmp.txt"
-        self.data_for_tmp = { "start_exams": 0, "answers": {}, "variant": self.variant_name}
+        self.data_for_tmp = { "start_exams": 0, "answers": {}, "variant": self.variant_name, "question_times": {}}
         
         if os.path.exists(tmp_path):
             self._read_tmp_file()
             self.variant = self.data_for_tmp.get("variant", self.variant_name)
             self.start_time = datetime.datetime.fromtimestamp(self.data_for_tmp["start_exams"])
             self.answers = self.data_for_tmp.get("answers", {})
+            self.question_times = self.data_for_tmp.get("question_times", {})
+            self.question_times = {int(k): v for k, v in self.question_times.items()}
         else:
             self.variant = self.variant_name if self.variant_name else (os.path.basename(db_path) if db_path else "Unknown DB")
             self.start_time = datetime.datetime.now()
             self.data_for_tmp["start_exams"] = self.start_time.timestamp()
             self.data_for_tmp["variant"] = self.variant
             self.answers = {}
+            self.question_times = {}
+            self.data_for_tmp["question_times"] = self.question_times
 
             os.makedirs(REPORTS_DIR / self.student / self.test_dir_name, exist_ok=True)
             self._update_tmp_file()
@@ -258,6 +262,7 @@ class TestScreen(QWidget):
         self.questions = load_questions(db_path, variant_name=self.variant)
         self.skipped = set()
         self.current_idx = 0
+        self.last_timer_update = datetime.datetime.now()
         self.widgets = [] # Инициализируем сразу! (Fix AttributeError)
         self.nav_buttons = []
         
@@ -414,13 +419,20 @@ class TestScreen(QWidget):
             f.close()
 
     def _update_timer(self):
-        delta =self.start_time + datetime.timedelta(seconds=TIME_FOR_EXAM) -  datetime.datetime.now() 
-        seconds = delta.seconds
+        now = datetime.datetime.now()
+        elapsed_on_q = (now - self.last_timer_update).total_seconds()
+        self.question_times[self.current_idx] = self.question_times.get(self.current_idx, 0) + elapsed_on_q
+        self.last_timer_update = now
+        self.data_for_tmp["question_times"] = self.question_times
+        self._update_tmp_file()
+
+        delta = self.start_time + datetime.timedelta(seconds=TIME_FOR_EXAM) - now 
+        seconds = int(delta.total_seconds())
 
         if delta.total_seconds() < 0:
             self._finish_confirm(False)
 
-        m, s = divmod(seconds, 60)
+        m, s = divmod(max(0, seconds), 60)
         self.timer_lbl.setText(f"{m:02d}:{s:02d}")
 
     def _update_nav(self):
@@ -440,6 +452,7 @@ class TestScreen(QWidget):
         if not (0 <= idx < len(self.questions)): return
         
         self.current_idx = idx
+        self.last_timer_update = datetime.datetime.now()
         q = self.questions[idx]
         
         self.prog_lbl.setText(f"Вопрос {idx+1} из {len(self.questions)}")
@@ -530,9 +543,15 @@ class TestScreen(QWidget):
             
             msg += "\n\nВы действительно хотите завершить тест?"
             
-            reply = QMessageBox.question(self, "Завершение теста", msg,
-                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-            if reply == QMessageBox.StandardButton.Yes:
+            box = QMessageBox(self)
+            box.setWindowTitle("Завершение теста")
+            box.setText(msg)
+            box.setIcon(QMessageBox.Icon.Question)
+            yes_btn = box.addButton("Да", QMessageBox.ButtonRole.YesRole)
+            no_btn = box.addButton("Нет", QMessageBox.ButtonRole.NoRole)
+            box.exec()
+            
+            if box.clickedButton() == yes_btn:
                 end = True
         else:
             # Сюда попадаем только при автоматическом завершении (например, по таймеру)
@@ -549,6 +568,7 @@ class TestScreen(QWidget):
                 "questions": self.questions, "answers": self.answers,
                 "elapsed": (datetime.datetime.now() - self.start_time).seconds if (datetime.datetime.now() - self.start_time).seconds < TIME_FOR_EXAM  else TIME_FOR_EXAM,
                 "test_dir_name": self.test_dir_name,
+                "question_times": self.question_times,
                 "db_path": self.db_path
             })
 
@@ -581,7 +601,7 @@ class ResultScreen(QWidget):
         save_result_to_excel(data['student'], score, len(data['answers']), total, data['variant'], data["elapsed"])
         
         db_name = os.path.basename(data.get('db_path', '')).replace('.xlsx', '')
-        generate_pdf(data['student'], data["test_dir_name"], data['variant'], data['questions'], data['answers'], score, total, data["elapsed"], db_name)
+        generate_pdf(data['student'], data["test_dir_name"], data['variant'], data['questions'], data['answers'], score, total, data["elapsed"], db_name, data.get('question_times', {}))
                 
         container = QWidget()
         c_layout = QVBoxLayout(container)
@@ -687,10 +707,13 @@ class ValidatorTestScreen(QWidget):
         self.questions = load_questions(db_path, variant_name=variant_name)
         self.answers = {}
         self.validity = {} # Сохранение статуса валидности (is_valid)
+        self.question_times = {} # Время на каждый вопрос
+        self.last_timer_update = datetime.datetime.now()
         self.skipped = set()
         self.current_idx = 0
         self.widgets = [] 
         self.nav_buttons = []
+        self._loading = False
         
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -824,11 +847,25 @@ class ValidatorTestScreen(QWidget):
         
         self._load_q(0)
 
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._update_question_timer)
+        self.timer.start(1000)
+
+    def _update_question_timer(self):
+        now = datetime.datetime.now()
+        elapsed_on_q = (now - self.last_timer_update).total_seconds()
+        self.question_times[self.current_idx] = self.question_times.get(self.current_idx, 0) + elapsed_on_q
+        self.last_timer_update = now
+
     def _update_nav(self):
         for i, btn in enumerate(self.nav_buttons):
             if i == self.current_idx:
                 btn.setObjectName("nav_btn_active")
+            elif not self.validity.get(i, True):
+                # Если помечен как "не валиден" - всегда красный
+                btn.setObjectName("nav_btn_incorrect")
             elif i in self.answers:
+                # Если дан любой ответ - зеленый
                 btn.setObjectName("nav_btn_answered")
             elif i in self.skipped:
                 btn.setObjectName("nav_btn_skipped")
@@ -840,7 +877,9 @@ class ValidatorTestScreen(QWidget):
         self._save_ans()
         if not (0 <= idx < len(self.questions)): return
         
+        self._loading = True
         self.current_idx = idx
+        self.last_timer_update = datetime.datetime.now()
         q = self.questions[idx]
         
         self.prog_lbl.setText(f"Вопрос {idx+1} из {len(self.questions)}")
@@ -885,6 +924,7 @@ class ValidatorTestScreen(QWidget):
             self.ans_card.hide()
 
         self._update_nav()
+        self._loading = False
         
         is_first = (idx == 0)
         self.btn_back.setEnabled(not is_first)
@@ -915,7 +955,7 @@ class ValidatorTestScreen(QWidget):
         self.ans_card.show()
 
     def _save_ans(self):
-        if not hasattr(self, 'widgets') or not self.widgets:
+        if self._loading or not hasattr(self, 'widgets') or not self.widgets:
             return
 
         is_valid = not self.validity_cb.isChecked()
@@ -959,14 +999,22 @@ class ValidatorTestScreen(QWidget):
         
         msg += "\n\nВы действительно хотите завершить валидацию?"
         
-        reply = QMessageBox.question(self, "Завершение валидации", msg,
-                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if reply == QMessageBox.StandardButton.Yes:
+        box = QMessageBox(self)
+        box.setWindowTitle("Завершение валидации")
+        box.setText(msg)
+        box.setIcon(QMessageBox.Icon.Question)
+        yes_btn = box.addButton("Да", QMessageBox.ButtonRole.YesRole)
+        no_btn = box.addButton("Нет", QMessageBox.ButtonRole.NoRole)
+        box.exec()
+        
+        if box.clickedButton() == yes_btn:
+            self.timer.stop()
             db_name = os.path.basename(self.db_path).replace('.xlsx', '') if self.db_path else "Unknown_DB"
             self.finished.emit({
                 "validator": self.validator_login, "variant": self.variant,
                 "questions": self.questions, "answers": self.answers,
-                "validity": self.validity, "db_path": self.db_path, "db_name": db_name
+                "validity": self.validity, "db_path": self.db_path, "db_name": db_name,
+                "question_times": self.question_times
             })
 
 from src.utils import generate_validator_pdf
@@ -985,7 +1033,8 @@ class ValidatorResultScreen(QWidget):
             questions=data['questions'],
             answers=data['answers'],
             validity=data['validity'],
-            db_name=data['db_name']
+            db_name=data['db_name'],
+            question_times=data.get('question_times', {})
         )
                 
         container = QWidget()

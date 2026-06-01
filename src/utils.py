@@ -324,6 +324,22 @@ def generate_validator_pdf(validator, variant, questions, answers, validity, db_
         pdf.cell(0, 7, f"Версия БД: {db_name}", ln=True, align='C')
         pdf.cell(0, 7, f"Вариант: {variant}", ln=True, align='C')
         pdf.cell(0, 7, f"Валидатор: {validator}", ln=True, align='C')
+
+        # Расчет статистики для заголовка
+        total_q = len(questions)
+        correct_q = 0
+        for i, q in enumerate(questions):
+            user_ans_keys = answers.get(i, "")
+            if user_ans_keys:
+                c_set = set(q.get('correct', '').split(','))
+                u_set = set(user_ans_keys.split(','))
+                if c_set == u_set:
+                    correct_q += 1
+        percentage = (correct_q / total_q * 100) if total_q > 0 else 0
+        
+        pdf.set_text_color(100, 100, 100) # Серый цвет для процента
+        pdf.cell(0, 7, f"Результат: {percentage:.1f}% ({correct_q} из {total_q})", ln=True, align='C')
+        pdf.set_text_color(0, 0, 0)
         pdf.ln(10)
         
         pdf.set_draw_color(180, 180, 180)
@@ -381,6 +397,25 @@ def generate_validator_pdf(validator, variant, questions, answers, validity, db_
             
             pdf.set_x(20)
             pdf.multi_cell(0, 5, f"Ответ валидатора: {u_ans_full}")
+
+            # Правильный ответ
+            c_texts = []
+            if correct_keys:
+                for k in correct_keys.split(','):
+                    ans_text = q['options'].get(k, '')
+                    c_texts.append(f"{k.upper()}) {ans_text}")
+            c_ans_full = "; ".join(c_texts) if c_texts else "Не указан"
+            
+            pdf.set_text_color(0, 100, 0) # Темно-зеленый для правильного ответа
+            pdf.set_x(20)
+            pdf.multi_cell(0, 5, f"Правильный ответ: {c_ans_full}")
+            pdf.set_text_color(0, 0, 0)
+
+            # Обоснование
+            exp = q.get('explanation', '')
+            if exp and str(exp).lower() != 'nan':
+                pdf.set_x(20)
+                pdf.multi_cell(0, 5, f"Обоснование: {exp}")
             
             pdf.ln(4)
             

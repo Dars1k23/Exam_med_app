@@ -1,2 +1,6 @@
 NOK_pediatric_surgery_1000_items_v3
 NOK
+pediatric_surgery OTF A пример 26
+pediatric_surgery OTF A
+pediatric_surgery OTF B пример 27
+pediatric_surgery OTF B

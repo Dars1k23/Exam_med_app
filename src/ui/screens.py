@@ -1037,6 +1037,33 @@ class ValidatorResultScreen(QWidget):
             question_times=data.get('question_times', {})
         )
                 
+        # Расчет статистики
+        total = len(data['questions'])
+        invalid_count = 0
+        correct_count = 0
+        incorrect_count = 0
+        skipped_count = 0
+        
+        for i, q in enumerate(data['questions']):
+            user_ans_keys = data['answers'].get(i, "")
+            is_valid = data['validity'].get(i, True)
+            
+            if not is_valid:
+                invalid_count += 1
+            
+            if not user_ans_keys:
+                skipped_count += 1
+            else:
+                correct_keys = q.get('correct', '')
+                c_set = set(correct_keys.split(','))
+                u_set = set(user_ans_keys.split(','))
+                if c_set == u_set:
+                    correct_count += 1
+                else:
+                    incorrect_count += 1
+        
+        percentage = (correct_count / total * 100) if total > 0 else 0
+
         container = QWidget()
         c_layout = QVBoxLayout(container)
         c_layout.setContentsMargins(48, 32, 48, 32)
@@ -1047,6 +1074,24 @@ class ValidatorResultScreen(QWidget):
         score_lbl.setStyleSheet(f"font-size: 40px; font-weight: 800; color: #68D391;")
         score_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         top_card.add_widget(score_lbl)
+
+        # Сводная информация
+        stats_layout = QHBoxLayout()
+        stats_layout.setSpacing(20)
+        
+        def create_stat(label, value, color="#CBD5E0"):
+            l = QLabel(f"<b>{value}</b><br>{label}")
+            l.setStyleSheet(f"color: {color}; font-size: 16px;")
+            l.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            return l
+
+        stats_layout.addWidget(create_stat("Правильно", f"{percentage:.1f}%", "#68D391"))
+        stats_layout.addWidget(create_stat("Верно", correct_count, "#68D391"))
+        stats_layout.addWidget(create_stat("Неверно", incorrect_count, "#FC8181"))
+        stats_layout.addWidget(create_stat("Пропущено", skipped_count, "#A0AEC0"))
+        stats_layout.addWidget(create_stat("Не валидно", invalid_count, "#F6AD55"))
+        
+        top_card.layout.addLayout(stats_layout)
         
         info_lbl = QLabel(f"Валидатор: {data['validator']}  ·  База: {data['db_name']}  ·  Вариант: {data['variant']}")
         info_lbl.setStyleSheet("color: #CBD5E0; font-size: 16px; max-height: 100px")
